@@ -1,0 +1,180 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace CADImporter
+{
+    /// <summary>Length unit the source CAD file was authored in.</summary>
+    public enum SourceUnit
+    {
+        Millimeters,
+        Centimeters,
+        Meters,
+        Inches,
+        Feet
+    }
+
+    /// <summary>Coordinate convention of the source file.</summary>
+    public enum SourceOrientation
+    {
+        /// <summary>Z-up, right-handed. Most CAD packages (SolidWorks, FreeCAD, Inventor, CATIA).</summary>
+        ZUpRightHanded,
+        /// <summary>Y-up, right-handed. Common for OBJ exports (Blender, Maya).</summary>
+        YUpRightHanded,
+        /// <summary>Y-up, left-handed. Data is already in Unity's convention; no conversion.</summary>
+        YUpLeftHanded
+    }
+
+    public static class CADUnits
+    {
+        public static float ToMeters(SourceUnit unit)
+        {
+            switch (unit)
+            {
+                case SourceUnit.Millimeters: return 0.001f;
+                case SourceUnit.Centimeters: return 0.01f;
+                case SourceUnit.Inches:      return 0.0254f;
+                case SourceUnit.Feet:        return 0.3048f;
+                default:                     return 1f;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Intermediate triangle-mesh representation shared by all parsers.
+    /// Attribute arrays other than <see cref="Positions"/> are optional (null when absent).
+    /// </summary>
+    public sealed class CADMeshData
+    {
+        public string Name = "Mesh";
+        public Vector3[] Positions;
+        public Vector3[] Normals;
+        public Color32[] Colors;
+        public Vector2[] UV;
+
+        /// <summary>Triangle index lists, one per submesh.</summary>
+        public int[][] Submeshes;
+
+        /// <summary>Material name per submesh; null when the format carries no materials.</summary>
+        public string[] SubmeshMaterials;
+
+        public int VertexCount => Positions?.Length ?? 0;
+
+        public int TriangleCount
+        {
+            get
+            {
+                if (Submeshes == null) return 0;
+                int n = 0;
+                for (int i = 0; i < Submeshes.Length; i++)
+                    n += Submeshes[i].Length / 3;
+                return n;
+            }
+        }
+
+        public int[] CombinedIndices()
+        {
+            if (Submeshes == null) return new int[0];
+            if (Submeshes.Length == 1) return Submeshes[0];
+            int total = 0;
+            for (int i = 0; i < Submeshes.Length; i++) total += Submeshes[i].Length;
+            var all = new int[total];
+            int off = 0;
+            for (int i = 0; i < Submeshes.Length; i++)
+            {
+                System.Array.Copy(Submeshes[i], 0, all, off, Submeshes[i].Length);
+                off += Submeshes[i].Length;
+            }
+            return all;
+        }
+
+        public static int[] SequentialIndices(int count)
+        {
+            var idx = new int[count];
+            for (int i = 0; i < count; i++) idx[i] = i;
+            return idx;
+        }
+    }
+
+    /// <summary>A node in the imported part hierarchy (assembly / part / body).</summary>
+    public sealed class CADNode
+    {
+        public string Name;
+        public CADMeshData Mesh;
+        public readonly List<CADNode> Children = new List<CADNode>();
+    }
+
+    /// <summary>Material description parsed from the source file (e.g. OBJ .mtl).</summary>
+    public sealed class CADMaterialInfo
+    {
+        public string Name;
+        public Color Color = new Color(0.75f, 0.75f, 0.78f, 1f);
+        public float Smoothness = 0.4f;
+        public float Metallic;
+    }
+
+    /// <summary>Root object produced by every parser.</summary>
+    public sealed class CADModel
+    {
+        public string Name;
+        public string SourcePath;
+        public string Format;
+        public readonly CADNode Root = new CADNode { Name = "Root" };
+        public readonly List<CADMaterialInfo> Materials = new List<CADMaterialInfo>();
+
+        public IEnumerable<CADNode> EnumerateNodes()
+        {
+            var stack = new Stack<CADNode>();
+            stack.Push(Root);
+            while (stack.Count > 0)
+            {
+                var n = stack.Pop();
+                yield return n;
+                for (int i = n.Children.Count - 1; i >= 0; i--)
+                    stack.Push(n.Children[i]);
+            }
+        }
+
+        public int TotalTriangles
+        {
+            get
+            {
+                int n = 0;
+                foreach (var node in EnumerateNodes())
+                    if (node.Mesh != null) n += node.Mesh.TriangleCount;
+                return n;
+            }
+        }
+
+        public int TotalVertices
+        {
+            get
+            {
+                int n = 0;
+                foreach (var node in EnumerateNodes())
+                    if (node.Mesh != null) n += node.Mesh.VertexCount;
+                return n;
+            }
+        }
+    }
+
+    /// <summary>Geometry-processing options applied after parsing, before Unity meshes are built.</summary>
+    public struct CADProcessOptions
+    {
+        public float Scale;
+        public SourceOrientation Orientation;
+        public bool Weld;
+        public float WeldTolerance;
+        public bool RecalculateNormals;
+        public float SmoothingAngleDeg;
+
+        public static CADProcessOptions Default => new CADProcessOptions
+        {
+            Scale = 0.001f,
+            Orientation = SourceOrientation.ZUpRightHanded,
+            Weld = true,
+            WeldTolerance = 1e-5f,
+            RecalculateNormals = false,
+            SmoothingAngleDeg = 30f
+        };
+    }
+}

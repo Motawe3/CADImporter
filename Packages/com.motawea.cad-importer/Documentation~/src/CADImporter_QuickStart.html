@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CAD Importer — Quick Start</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 18mm 16mm 18mm;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: #1c2733;
+    margin: 0;
+  }
+  .head {
+    border-bottom: 3px solid #0b6e78;
+    padding-bottom: 4mm;
+    margin-bottom: 6mm;
+  }
+  .head .badge {
+    color: #0b6e78;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 8.5pt;
+  }
+  .head h1 { font-size: 24pt; margin: 1mm 0 1mm 0; color: #10222e; }
+  .head .sub { color: #46586a; font-size: 10.5pt; }
+  h2 {
+    font-size: 13pt;
+    color: #0b6e78;
+    margin: 6mm 0 2mm 0;
+    page-break-after: avoid;
+  }
+  h2 .step {
+    display: inline-block;
+    background: #0b6e78;
+    color: #fff;
+    border-radius: 50%;
+    width: 6.5mm; height: 6.5mm;
+    line-height: 6.5mm;
+    text-align: center;
+    font-size: 10pt;
+    margin-right: 2mm;
+  }
+  p { margin: 0 0 2.5mm 0; }
+  ul, ol { margin: 0 0 3mm 0; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  code, pre {
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: 9pt;
+  }
+  code { background: #eef2f5; padding: 0.4mm 1.2mm; border-radius: 2px; color: #0b3a44; }
+  pre {
+    background: #f4f7f9;
+    border: 0.4pt solid #c6d2da;
+    border-left: 3px solid #0b6e78;
+    padding: 3mm 4mm;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+    margin: 2mm 0 3mm 0;
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 2mm 0 4mm 0;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  th { background: #0b6e78; color: #fff; text-align: left; padding: 1.8mm 2.5mm; font-weight: 600; }
+  td { border-bottom: 0.4pt solid #c6d2da; padding: 1.6mm 2.5mm; vertical-align: top; }
+  tr:nth-child(even) td { background: #f2f6f8; }
+  .note {
+    background: #fff7e8;
+    border: 0.4pt solid #e8cf9a;
+    border-left: 3px solid #d9a12e;
+    padding: 2mm 3.5mm;
+    margin: 2.5mm 0 3.5mm 0;
+    page-break-inside: avoid;
+  }
+  .footer {
+    margin-top: 7mm;
+    border-top: 0.6pt solid #c6d2da;
+    padding-top: 2.5mm;
+    color: #46586a;
+    font-size: 9pt;
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="badge">Quick Start Guide</div>
+  <h1>CAD Importer</h1>
+  <div class="sub">From CAD file to simulation-ready Unity prefab in five minutes.
+    Full details: <b>CAD Importer — Documentation.pdf</b> (same folder).</div>
+</div>
+
+<h2><span class="step">1</span>Install</h2>
+<p>
+<b>Window &rarr; Package Manager</b> &rarr; <b>+</b> &rarr; <i>Add package from git URL…</i>
+</p>
+<pre><code>https://github.com/Motawe3/CADImporter.git?path=Packages/com.motawea.cad-importer</code></pre>
+<p>
+Append <code>#v1.0.0</code> to pin a release. Nothing else in your project is touched.
+Works with URP (recommended) and the Built-in pipeline.
+</p>
+
+<h2><span class="step">2</span>Import your first model</h2>
+<p>
+Drop an <code>.stl</code> or <code>.ply</code> file anywhere under <code>Assets/</code>,
+then drag the resulting prefab into your scene. Done — the asset already contains:
+</p>
+<ul>
+  <li>meters &amp; Y-up conversion (from CAD millimeters, Z-up),</li>
+  <li>welded vertices and smooth normals with crisp 30&deg; hard edges,</li>
+  <li>a 3-level LOD chain (100% / 50% / 15% triangles) per part,</li>
+  <li>a simplified physics collider per part,</li>
+  <li>a <code>CADModelInfo</code> component with source metadata.</li>
+</ul>
+<p>
+Select the asset in the Project window to tune any of this in the Inspector, then press
+<b>Apply</b>. For many files at once, use <b>Tools &rarr; CAD Importer</b> — queue files,
+set options once, import in one click.
+</p>
+
+<h2><span class="step">3</span>Enable STEP / IGES (optional)</h2>
+<ol>
+  <li>Install <b>FreeCAD</b> (free) from <b>freecad.org</b> — its Open CASCADE kernel
+      performs the B-rep tessellation.</li>
+  <li>Open <b>Tools &rarr; CAD Importer</b>. FreeCAD is normally auto-detected; otherwise
+      point <b>Browse…</b> to <code>FreeCADCmd.exe</code> (e.g.
+      <code>C:\Program&nbsp;Files\FreeCAD&nbsp;1.0\bin</code>).</li>
+  <li>Drop <code>.step</code>/<code>.iges</code> files into your project. Every solid
+      becomes a named child GameObject — assemblies keep their structure.</li>
+</ol>
+
+<h2><span class="step">4</span>Pick the right collider for robotics</h2>
+<table>
+  <tr><th>Use case</th><th>Collider Mode</th></tr>
+  <tr><td>Static environment: frames, fixtures, cells</td><td><b>Simplified Mesh</b> (default)</td></tr>
+  <tr><td>Moving robot links on Rigidbody / ArticulationBody</td><td><b>Convex Mesh</b></td></tr>
+  <tr><td>Coarse interaction only</td><td><b>Box</b></td></tr>
+  <tr><td>Precise contact analysis, static</td><td><b>Full Mesh</b></td></tr>
+</table>
+
+<h2><span class="step">5</span>Load CAD at runtime (digital twins)</h2>
+<pre><code>using CADImporter;
+
+GameObject model = await CADRuntimeImporter.ImportAsync(
+    @"C:\twins\gripper.stl",
+    new CADRuntimeImportSettings
+    {
+        sourceUnit        = SourceUnit.Millimeters,
+        generateColliders = true,
+        convexColliders   = true   // for dynamic Rigidbodies
+    });</code></pre>
+<p>
+Parsing and processing run on a worker thread, so the simulation never hitches.
+Supported at runtime: STL, PLY, OBJ. For a ready-made scene, import the
+<b>CAD Importer Demo</b> sample from the Package Manager (requires URP), or add the
+<code>DemoCadRuntimeImporter</code> component to any GameObject.
+</p>
+<div class="note"><b>Builds:</b> runtime materials use the URP Lit shader — add it to
+<i>Project Settings &rarr; Graphics &rarr; Always Included Shaders</i> (or pass your own
+material in the settings).</div>
+
+<h2>Defaults worth knowing</h2>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Change it when…</th></tr>
+  <tr><td>Source Unit</td><td>Millimeters</td><td>the file was exported in cm / m / inches</td></tr>
+  <tr><td>Source Orientation</td><td>Z-up right-handed</td><td>model imports lying on its side</td></tr>
+  <tr><td>Smoothing Angle</td><td>30&deg;</td><td>surfaces look faceted (raise) or edges look mushy (lower)</td></tr>
+  <tr><td>LOD Qualities</td><td>0.5, 0.15</td><td>you need more or fewer detail levels</td></tr>
+  <tr><td>Collider Quality</td><td>0.25</td><td>contact precision vs. physics cost</td></tr>
+  <tr><td>Mark Static</td><td>Off</td><td>importing non-moving factory geometry — turn it on</td></tr>
+</table>
+
+<div class="footer">
+  CAD Importer 1.0.0 &middot; Requires Unity 6000.0+ &middot; MIT License &middot;
+  Support: <b>github.com/Motawe3/CADImporter/issues</b> &middot;
+  Full manual: <i>CAD Importer — Documentation.pdf</i>
+</div>
+
+</body>
+</html>

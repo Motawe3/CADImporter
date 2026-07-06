@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CAD Importer — Documentation</title>
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm 18mm;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: #1c2733;
+    margin: 0;
+  }
+  .cover {
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 240mm;
+  }
+  .cover .badge {
+    color: #0b6e78;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    font-size: 9pt;
+    margin-bottom: 10mm;
+  }
+  .cover h1 {
+    font-size: 34pt;
+    margin: 0 0 4mm 0;
+    color: #10222e;
+    line-height: 1.15;
+  }
+  .cover .subtitle { font-size: 13pt; color: #46586a; max-width: 130mm; }
+  .cover .meta {
+    margin-top: 26mm;
+    border-top: 2px solid #0b6e78;
+    padding-top: 5mm;
+    color: #46586a;
+    font-size: 9.5pt;
+  }
+  .cover .meta div { margin: 1mm 0; }
+  h1 { font-size: 17pt; color: #10222e; border-bottom: 2px solid #0b6e78; padding-bottom: 2mm; margin: 10mm 0 4mm 0; page-break-after: avoid; }
+  h2 { font-size: 12.5pt; color: #0b6e78; margin: 7mm 0 2.5mm 0; page-break-after: avoid; }
+  h3 { font-size: 11pt; color: #10222e; margin: 5mm 0 1.5mm 0; page-break-after: avoid; }
+  p { margin: 0 0 3mm 0; }
+  section { page-break-inside: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 3mm 0 5mm 0;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background: #0b6e78;
+    color: #ffffff;
+    text-align: left;
+    padding: 2mm 2.5mm;
+    font-weight: 600;
+  }
+  td {
+    border-bottom: 0.4pt solid #c6d2da;
+    padding: 1.8mm 2.5mm;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f2f6f8; }
+  code, pre {
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: 9pt;
+  }
+  code { background: #eef2f5; padding: 0.4mm 1.2mm; border-radius: 2px; color: #0b3a44; }
+  pre {
+    background: #f4f7f9;
+    border: 0.4pt solid #c6d2da;
+    border-left: 3px solid #0b6e78;
+    padding: 3mm 4mm;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+    margin: 2.5mm 0 4mm 0;
+  }
+  pre code { background: none; padding: 0; }
+  ul, ol { margin: 0 0 3mm 0; padding-left: 6mm; }
+  li { margin-bottom: 1.2mm; }
+  .note {
+    background: #fff7e8;
+    border: 0.4pt solid #e8cf9a;
+    border-left: 3px solid #d9a12e;
+    padding: 2.5mm 4mm;
+    margin: 3mm 0 4mm 0;
+    page-break-inside: avoid;
+  }
+  .note b { color: #8a6414; }
+  .tip {
+    background: #ebf6f4;
+    border: 0.4pt solid #a9d6cd;
+    border-left: 3px solid #178a72;
+    padding: 2.5mm 4mm;
+    margin: 3mm 0 4mm 0;
+    page-break-inside: avoid;
+  }
+  .tip b { color: #0f6252; }
+  .toc { font-size: 10pt; }
+  .toc li { margin-bottom: 1.6mm; }
+  .footer-contact { margin-top: 8mm; color: #46586a; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="badge">Unity Editor &amp; Runtime Extension</div>
+  <h1>CAD Importer</h1>
+  <div class="subtitle">
+    Import CAD models into Unity for robotics simulation and digital twins —
+    STL, PLY, OBJ, STEP and IGES, with automatic LODs, simplified physics
+    colliders and a runtime loading API.
+  </div>
+  <div class="meta">
+    <div><b>Document:</b> User Manual &amp; Reference</div>
+    <div><b>Version:</b> 1.0.0</div>
+    <div><b>Requires:</b> Unity 6000.0 or newer &middot; Universal Render Pipeline recommended</div>
+    <div><b>Package:</b> com.motawea.cad-importer &middot; github.com/Motawe3/CADImporter</div>
+    <div><b>Support:</b> GitHub Issues &middot; mohammed.motawea90@gmail.com</div>
+  </div>
+</div>
+
+<h1>Contents</h1>
+<ol class="toc">
+  <li>Overview</li>
+  <li>Supported Formats</li>
+  <li>Installation</li>
+  <li>Importing in the Editor</li>
+  <li>Import Settings Reference</li>
+  <li>The CAD Importer Window (Batch Import)</li>
+  <li>STEP / IGES Setup (FreeCAD)</li>
+  <li>Runtime Import for Digital Twins</li>
+  <li>The Processing Pipeline &amp; Performance</li>
+  <li>Working with Imported Models in Robotics Scenes</li>
+  <li>Troubleshooting &amp; FAQ</li>
+  <li>Known Limitations</li>
+  <li>Support</li>
+</ol>
+
+<h1>1. Overview</h1>
+<p>
+CAD Importer turns mechanical CAD data into game-ready Unity content. It was designed
+for robotics simulation and digital-twin projects, where models arrive as engineering
+exports (millimeter units, Z-up axes, extremely dense tessellation, no game-oriented
+optimization) and must run at interactive frame rates alongside physics.
+</p>
+<p>Every import automatically:</p>
+<ul>
+  <li>converts units to meters and axes to Unity's Y-up, left-handed convention;</li>
+  <li>welds duplicated vertices and rebuilds smooth normals with configurable hard edges;</li>
+  <li>generates a level-of-detail (LOD) chain per part using quadric-error decimation;</li>
+  <li>generates simplified physics collision meshes, separate from the render meshes;</li>
+  <li>preserves the part hierarchy and part names of assemblies;</li>
+  <li>attaches a <code>CADModelInfo</code> component with source metadata for twin tooling.</li>
+</ul>
+<p>
+The package is pure C# — no native plugins — so editor imports work on any platform
+Unity's editor runs on, and the runtime loader ships in your builds unchanged.
+</p>
+
+<h1>2. Supported Formats</h1>
+<table>
+  <tr><th>Format</th><th>Editor import</th><th>Runtime import</th><th>Notes</th></tr>
+  <tr>
+    <td>STL — binary &amp; ASCII</td><td>Yes (drag &amp; drop)</td><td>Yes</td>
+    <td>Multi-solid ASCII files import as separate, named parts. Facet normals are
+        recomputed for smooth shading.</td>
+  </tr>
+  <tr>
+    <td>PLY — ascii, binary little/big endian</td><td>Yes (drag &amp; drop)</td><td>Yes</td>
+    <td>Vertex colors and UVs are preserved; polygon faces are triangulated.</td>
+  </tr>
+  <tr>
+    <td>OBJ</td><td>Unity's native importer</td><td>Yes</td>
+    <td>The runtime loader supports groups, MTL diffuse colors, and negative indices.</td>
+  </tr>
+  <tr>
+    <td>STEP (.step / .stp)</td><td>Yes (via FreeCAD)</td><td>—</td>
+    <td>Assembly structure and part labels preserved. See section 7.</td>
+  </tr>
+  <tr>
+    <td>IGES (.iges / .igs)</td><td>Yes (via FreeCAD)</td><td>—</td>
+    <td>Same pipeline as STEP.</td>
+  </tr>
+</table>
+
+<h1>3. Installation</h1>
+<p>CAD Importer is distributed as a Unity package on GitHub, installed through the
+Unity Package Manager.</p>
+<ol>
+  <li>Open <b>Window &rarr; Package Manager</b>, press <b>+</b> &rarr;
+      <i>Add package from git URL…</i> and paste:
+      <pre><code>https://github.com/Motawe3/CADImporter.git?path=Packages/com.motawea.cad-importer</code></pre>
+      To pin a specific release, append a tag, e.g. <code>#v1.0.0</code>.</li>
+  <li>Alternatively, add it to your project's <code>Packages/manifest.json</code>:
+      <pre><code>"com.motawea.cad-importer": "https://github.com/Motawe3/CADImporter.git?path=Packages/com.motawea.cad-importer#v1.0.0"</code></pre></li>
+  <li>The package ships two assemblies — <code>CADImporter.Runtime</code> and
+      <code>CADImporter.Editor</code>. No project settings are modified.</li>
+  <li><i>Optional:</i> install <a href="https://www.freecad.org">FreeCAD</a> (free, open source)
+      to enable STEP/IGES import — see section 7.</li>
+</ol>
+<div class="note"><b>Git requirement.</b> Installing from a git URL requires a git client
+on your machine (git-scm.com); Unity's Package Manager invokes it during installation.</div>
+<div class="tip"><b>Render pipelines.</b> Generated materials use
+<i>Universal Render Pipeline/Lit</i> and automatically fall back to <i>Standard</i> in
+Built-in render pipeline projects.</div>
+
+<h1>4. Importing in the Editor</h1>
+<h2>4.1 Drag &amp; drop</h2>
+<p>
+Drop an <code>.stl</code>, <code>.ply</code>, <code>.step</code>/<code>.stp</code> or
+<code>.iges</code>/<code>.igs</code> file anywhere under <code>Assets/</code>. The file
+imports like any model: the asset becomes a prefab containing the part hierarchy, meshes,
+materials, LOD groups and colliders as sub-assets. Drag it into a scene to use it.
+</p>
+<h2>4.2 Per-asset settings</h2>
+<p>
+Select the imported asset to edit its import settings in the Inspector (section 5),
+then press <b>Apply</b> to reimport. Settings are stored in the asset's
+<code>.meta</code> file, so they survive reimports and version control.
+</p>
+<h2>4.3 What gets generated</h2>
+<ul>
+  <li><b>Root GameObject</b> named after the file, carrying <code>CADModelInfo</code>.</li>
+  <li><b>One child per part</b> (STL solid / PLY mesh / STEP solid), named from the source data.</li>
+  <li><b>LODGroup per part</b> (when enabled) with renderer children <code>Part_LOD0…N</code>.</li>
+  <li><b>Collider per part</b> according to the collider mode.</li>
+  <li><b>Mesh, material and collision-mesh sub-assets</b> inside the imported asset.</li>
+</ul>
+
+<h1>5. Import Settings Reference</h1>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td>Source Unit</td><td>Millimeters</td>
+      <td>Unit the file was authored in (mm, cm, m, inch, foot). Converted to meters —
+          Unity physics and lighting assume meters.</td></tr>
+  <tr><td>Source Orientation</td><td>Z-up right-handed</td>
+      <td>Z-up RH matches SolidWorks, Inventor, CATIA, FreeCAD. Y-up RH matches most
+          OBJ exports. Y-up LH means "already Unity", no conversion. Triangle winding is
+          corrected automatically so surfaces stay outward-facing.</td></tr>
+  <tr><td>Additional Scale</td><td>1</td><td>Extra uniform scale on top of unit conversion.</td></tr>
+  <tr><td>Weld Vertices</td><td>On</td>
+      <td>Merges coincident vertices. STL stores three unique vertices per triangle;
+          welding typically reduces vertex count ~6&times; and is required for LOD
+          generation and smooth shading.</td></tr>
+  <tr><td>Weld Tolerance</td><td>1e-5 m</td><td>Merge distance, in meters, after scaling.</td></tr>
+  <tr><td>Force Recalculate Normals</td><td>Off</td>
+      <td>Recompute normals even when the file provides them. STL normals are always
+          recomputed (per-facet normals shade poorly).</td></tr>
+  <tr><td>Smoothing Angle</td><td>30&deg;</td>
+      <td>Edges sharper than this stay hard (crisp machined edges); flatter edges are
+          smoothed with angle-weighted normals.</td></tr>
+  <tr><td>Generate LODs</td><td>On</td><td>Builds a LODGroup per part with decimated meshes.</td></tr>
+  <tr><td>LOD Qualities</td><td>0.5, 0.15</td>
+      <td>Triangle fraction kept at each extra LOD level. Two entries produce a
+          three-level chain (100% / 50% / 15%).</td></tr>
+  <tr><td>LOD Min Triangles</td><td>512</td><td>Parts below this count skip LOD generation.</td></tr>
+  <tr><td>LOD First Transition</td><td>0.35</td>
+      <td>Screen height at which LOD0 hands over to LOD1. Remaining transitions are spaced
+          geometrically down to the cull height.</td></tr>
+  <tr><td>LOD Cull Height</td><td>0.015</td><td>Screen height below which the part is culled.</td></tr>
+  <tr><td>Collider Mode</td><td>Simplified Mesh</td>
+      <td><b>None</b> — attach your own. <b>Box</b> — bounds box, cheapest.
+          <b>Convex Mesh</b> — convex hull, required for parts on dynamic Rigidbodies
+          (robot links). <b>Simplified Mesh</b> — decimated non-convex mesh, best
+          accuracy/cost trade-off for static geometry. <b>Full Mesh</b> — exact render
+          mesh, most expensive.</td></tr>
+  <tr><td>Collider Quality</td><td>0.25</td>
+      <td>Triangle fraction kept in generated collision meshes.</td></tr>
+  <tr><td>Material Mode</td><td>Lit</td>
+      <td><b>Lit</b>: URP Lit (or Standard). <b>Vertex Color Unlit</b>: shows per-vertex
+          colors from PLY scan data.</td></tr>
+  <tr><td>Default Color</td><td>Light gray</td><td>Base color for parts without material data.</td></tr>
+  <tr><td>Read/Write Meshes</td><td>Off</td>
+      <td>Keep mesh data CPU-accessible at runtime. Off halves mesh memory.</td></tr>
+  <tr><td>Mark Static</td><td>Off</td>
+      <td>Flags objects for static batching/occlusion. Leave off for articulated robots;
+          enable for factory shells and fixtures.</td></tr>
+  <tr><td>Generate Lightmap UVs</td><td>Off</td><td>Unwraps LOD0 meshes for baked lighting (slow on large models).</td></tr>
+  <tr><td>STEP Linear Deflection</td><td>0.1</td>
+      <td>Tessellation chord tolerance, relative to shape size. Lower = finer mesh, more triangles.</td></tr>
+  <tr><td>STEP Angular Deflection</td><td>20&deg;</td><td>Tessellation angular tolerance. Lower = finer curvature.</td></tr>
+</table>
+
+<h1>6. The CAD Importer Window (Batch Import)</h1>
+<p>Open <b>Tools &rarr; CAD Importer</b>. The window lets you:</p>
+<ul>
+  <li>queue external CAD files by drag &amp; drop or the <b>Add Files…</b> button;</li>
+  <li>edit one set of import settings applied to every queued file (persisted between sessions);</li>
+  <li>configure the FreeCAD converter path for STEP/IGES;</li>
+  <li>choose the target folder inside <code>Assets/</code>;</li>
+  <li>optionally place an instance of each imported model in the open scene.</li>
+</ul>
+<p>
+Press <b>Import</b>: each file is copied into the project, imported with your settings,
+and reported in the status box. From then on the copies behave like any other asset —
+adjust their settings individually in the Inspector at any time.
+</p>
+
+<h1>7. STEP / IGES Setup (FreeCAD)</h1>
+<p>
+STEP and IGES are B-rep (boundary representation) formats: they describe exact analytic
+surfaces, not triangles, and tessellating them requires a full CAD kernel. CAD Importer
+uses the Open CASCADE kernel bundled with <b>FreeCAD</b>, driven headlessly — FreeCAD
+never opens a window and is only executed during import.
+</p>
+<ol>
+  <li>Install FreeCAD 0.20 or newer from <b>freecad.org</b> (free, open source).</li>
+  <li>The importer auto-detects <code>FreeCADCmd.exe</code> in PATH and standard install
+      folders. If detection fails, set the path in <b>Tools &rarr; CAD Importer &rarr;
+      STEP / IGES Converter &rarr; Browse…</b></li>
+  <li>Import <code>.step</code>/<code>.iges</code> files like any other asset.</li>
+</ol>
+<p>
+Every solid in the file becomes a child GameObject named after its CAD label, so
+assemblies keep their structure — essential for mapping robot links or machine parts to
+simulation logic. Tessellation density is controlled by the two deflection settings
+(section 5).
+</p>
+<div class="note"><b>Note.</b> Without FreeCAD installed, STEP/IGES files import as an
+empty placeholder with a console warning explaining the requirement. All other formats
+work with no external dependencies.</div>
+
+<h1>8. Runtime Import for Digital Twins</h1>
+<p>
+Digital twins often need to load geometry that did not exist at build time. The
+<code>CADRuntimeImporter</code> API loads STL, PLY and OBJ files in the player, applying
+the same processing pipeline as the editor importers.
+</p>
+<div class="tip"><b>Demo sample.</b> A ready-made scene ships with the package: open
+<b>Window &rarr; Package Manager &rarr; CAD Importer &rarr; Samples</b> and import
+<i>CAD Importer Demo</i> (requires URP). Its on-screen panel — the
+<code>DemoCadRuntimeImporter</code> component — imports files at runtime, or a generated
+sample part when the path field is left empty.</div>
+<pre><code>using CADImporter;
+using UnityEngine;
+
+public class TwinLoader : MonoBehaviour
+{
+    async void Start()
+    {
+        var settings = new CADRuntimeImportSettings
+        {
+            sourceUnit        = SourceUnit.Millimeters,
+            sourceOrientation = SourceOrientation.ZUpRightHanded,
+            generateColliders = true,
+            colliderQuality   = 0.25f,   // decimated collision mesh
+            convexColliders   = true     // required on dynamic Rigidbodies
+        };
+
+        // Parsing and geometry processing run on a worker thread;
+        // only GameObject/Mesh creation touches the main thread.
+        GameObject model = await CADRuntimeImporter.ImportAsync(
+            @"C:\twins\gripper.stl", settings, transform);
+    }
+}</code></pre>
+<ul>
+  <li><code>ImportAsync</code> keeps the simulation responsive; a synchronous
+      <code>Import</code> overload exists for tooling.</li>
+  <li><code>CADRuntimeImportSettings.material</code> overrides the generated material.</li>
+  <li>The returned root carries <code>CADModelInfo</code> (source file, format, unit,
+      scale, triangle/vertex/part counts, import timestamp).</li>
+</ul>
+<div class="note"><b>Shader inclusion in builds.</b> Runtime-created materials use
+<code>Shader.Find("Universal Render Pipeline/Lit")</code>. Ensure that shader is included
+in builds — reference it in any scene material or add it to <i>Project Settings &rarr;
+Graphics &rarr; Always Included Shaders</i> — or supply your own material via the
+settings.</div>
+
+<h1>9. The Processing Pipeline &amp; Performance</h1>
+<p>Each mesh passes through the following stages, in order:</p>
+<ol>
+  <li><b>Unit scaling</b> — CAD millimeters become Unity meters. Correct scale is not
+      cosmetic: PhysX solver behavior, gravity, and lighting all assume meters.</li>
+  <li><b>Axis conversion</b> — Z-up right-handed data is mapped to Y-up left-handed with
+      the triangle winding flipped, so normals keep pointing outward.</li>
+  <li><b>Smooth normal generation</b> — angle-weighted normals across coincident
+      positions; vertices split only where faces meet above the smoothing angle.</li>
+  <li><b>Vertex welding</b> — duplicate vertices merged, degenerate triangles dropped,
+      orphaned vertices pruned.</li>
+  <li><b>LOD decimation</b> — a quadric-error-metric simplifier (Garland–Heckbert)
+      builds each LOD level; borders are preserved and normals recomputed per level.</li>
+  <li><b>Collision generation</b> — a separately decimated mesh feeds the collider, so
+      physics never runs against render-resolution geometry.</li>
+  <li><b>Unity mesh construction</b> — 16-bit index buffers whenever a part stays under
+      65k vertices; mesh data uploaded and released from CPU memory unless Read/Write
+      is enabled.</li>
+</ol>
+<h2>Practical performance guidance</h2>
+<ul>
+  <li>Dozens of dense CAD assemblies in one scene are viable because distant parts render
+      at 15% triangle density and cull entirely below 1.5% screen height.</li>
+  <li>For robot links under dynamic Rigidbodies use <b>Convex Mesh</b> colliders — PhysX
+      requires convex shapes on moving bodies.</li>
+  <li>Keep <b>Read/Write Meshes</b> off unless a script needs vertex access; it halves
+      runtime mesh memory.</li>
+  <li>Static factory geometry: enable <b>Mark Static</b> and consider
+      <b>Generate Lightmap UVs</b> for baked lighting.</li>
+  <li>Extremely dense scan/STL data (millions of triangles): lower LOD0 cost by importing
+      with a coarser STEP deflection or pre-decimating the source, then let the LOD chain
+      handle the rest.</li>
+</ul>
+
+<h1>10. Working with Imported Models in Robotics Scenes</h1>
+<ul>
+  <li><b>Articulation:</b> imported parts are plain GameObjects — add
+      <code>ArticulationBody</code> or <code>Rigidbody</code> components to the parts that
+      move, and parent them according to your kinematic chain. Part names from the CAD
+      assembly make this mapping straightforward.</li>
+  <li><b>Metadata:</b> <code>CADModelInfo</code> on every imported root records the source
+      file, format, unit and counts — useful to keep twins traceable to their CAD source.</li>
+  <li><b>Re-import on change:</b> replacing the CAD file on disk reimports with the same
+      settings; prefab instances in scenes update automatically.</li>
+  <li><b>Collision layers:</b> generated colliders live on the part GameObjects, so
+      standard layer/matrix configuration applies unchanged.</li>
+</ul>
+
+<h1>11. Troubleshooting &amp; FAQ</h1>
+<h3>The model imports tiny / huge</h3>
+<p>Set <b>Source Unit</b> to match the exporting CAD package (usually millimeters), Apply.</p>
+<h3>The model lies on its side</h3>
+<p>Set <b>Source Orientation</b> to <i>Z-up right-handed</i> (typical CAD) or
+<i>Y-up right-handed</i> (typical OBJ/DCC exports).</p>
+<h3>Surfaces look faceted or too smooth</h3>
+<p>Adjust <b>Smoothing Angle</b>: raise it to smooth more, lower it to keep edges hard.
+For files with authored normals, try <b>Force Recalculate Normals</b>.</p>
+<h3>STEP file imports as an empty object</h3>
+<p>FreeCAD is missing or not detected — see section 7. The console warning contains the
+same instructions.</p>
+<h3>Import is slow on a huge STL</h3>
+<p>Most time goes to welding and LOD decimation. Reduce LOD levels, raise
+<b>LOD Min Triangles</b>, or disable <b>Generate Lightmap UVs</b>.</p>
+<h3>A part flickers between LOD levels</h3>
+<p>Raise <b>LOD First Transition</b> or reduce the number of LOD qualities for that asset.</p>
+<h3>PLY vertex colors don't show</h3>
+<p>Set <b>Material Mode</b> to <i>Vertex Color Unlit</i>, or use your own vertex-color
+shader; the colors are stored in the mesh either way.</p>
+
+<h1>12. Known Limitations</h1>
+<ul>
+  <li>STEP/IGES import requires FreeCAD and is editor-only (no runtime B-rep tessellation).</li>
+  <li>Decimated LOD meshes drop vertex colors and UVs (rare in CAD data); normals are recomputed.</li>
+  <li>Nonstandard STL per-facet color extensions (SolidWorks/Magics attribute bytes) are ignored.</li>
+  <li>OBJ assets in the editor use Unity's native importer; CAD Importer settings apply to
+      OBJ only through the runtime API.</li>
+  <li>STEP assembly transforms are baked into part geometry (parts arrive positioned, not
+      as reusable instances).</li>
+</ul>
+
+<h1>13. Support</h1>
+<p>
+Questions, bug reports and feature requests:
+<b>github.com/Motawe3/CADImporter/issues</b> (preferred) or
+<b>mohammed.motawea90@gmail.com</b> — please include the Unity version, the importer
+settings used, and (when possible) a sample file that reproduces the issue.
+</p>
+<p class="footer-contact">CAD Importer 1.0.0 — MIT License — © 2026 Mohammed Motawea —
+github.com/Motawe3/CADImporter</p>
+
+</body>
+</html>

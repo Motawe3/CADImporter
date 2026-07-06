@@ -159,6 +159,11 @@ Packages/packages-lock.json linguist-generated
 # Documents
 *.pdf                   lfs
 
+# Package documentation and samples must be plain git: UPM git-URL installs use
+# the consumer's git, and without git-lfs they would receive pointer files.
+Packages/com.motawea.cad-importer/Documentation~/*.pdf -filter -diff -merge -text
+Packages/com.motawea.cad-importer/Samples~/**/*.hdr -filter -diff -merge -text
+
 # ETC
 *.a                     lfs
 *.reason                lfs
