@@ -169,11 +169,65 @@ def mesh_shape(shape):
         m.addFacets(shape.tessellate(LIN))
         return m
 
+def has_shape(o):
+    try:
+        return hasattr(o, 'Shape') and o.Shape is not None and not o.Shape.isNull() and len(o.Shape.Faces) > 0
+    except Exception:
+        return False
+
+def resolved(o):
+    # Follow App::Link chains to the object that owns the geometry.
+    try:
+        linked = o.getLinkedObject(True)
+        return linked if linked is not None else o
+    except Exception:
+        return o
+
 def collect(doc):
+    # Walk the document tree the way the FreeCAD GUI does: through getSubObjects /
+    # getSubObject, which resolve App::Link instances and accumulate the placements
+    # of App::Part containers. Reading .Shape off doc.Objects misses link instances
+    # entirely and loses container placements.
     items = []
-    objs = [o for o in doc.Objects if hasattr(o, 'Shape') and o.Shape is not None and not o.Shape.isNull()]
+
+    def visit(root, subname, obj):
+        r = resolved(obj)
+        tid = r.TypeId
+        if tid.startswith('App::Origin') or tid in ('App::Line', 'App::Plane', 'App::Point', 'App::Annotation'):
+            return
+        # Recurse into tree children first: containers (App::Part) aggregate their
+        # children into a compound Shape since FreeCAD 1.0, so a shape check alone
+        # would swallow whole sub-assemblies into a single part.
+        try:
+            subs = obj.getSubObjects()
+        except Exception:
+            subs = ()
+        if subs:
+            for s in subs:
+                try:
+                    child = root.getSubObject(subname + s, retType=1)
+                except Exception:
+                    child = None
+                if child is not None:
+                    visit(root, subname + s, child)
+            return
+        if has_shape(r):
+            try:
+                # retType=0 returns the shape with the full placement chain applied.
+                shape = root.getSubObject(subname, retType=0) if subname else r.Shape
+            except Exception:
+                shape = None
+            if shape is not None and not shape.isNull() and len(shape.Faces) > 0:
+                items.append((obj.Label or r.Label, shape))
+
+    for root in doc.RootObjects:
+        visit(root, '', root)
+    if items:
+        return items
+
+    # Fallback for documents without tree structure: flat leaf collection.
+    objs = [o for o in doc.Objects if has_shape(o)]
     shaped = set(objs)
-    # keep leaves only, so assembly containers don't duplicate their children
     for o in objs:
         if any((child in shaped) for child in o.OutList):
             continue

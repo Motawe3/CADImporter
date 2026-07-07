@@ -4,7 +4,7 @@ using UnityEditor.AssetImporters;
 namespace CADImporter.Editor
 {
     /// <summary>Makes .stl files first-class Unity assets: drag into the project and get a prefab.</summary>
-    [ScriptedImporter(2, "stl")]
+    [ScriptedImporter(3, "stl")]
     public class StlScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = new CADImportSettings();

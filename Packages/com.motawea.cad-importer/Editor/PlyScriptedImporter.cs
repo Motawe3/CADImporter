@@ -4,7 +4,7 @@ using UnityEditor.AssetImporters;
 namespace CADImporter.Editor
 {
     /// <summary>Imports .ply files (mesh or point data with vertex colors, e.g. scan data).</summary>
-    [ScriptedImporter(2, "ply")]
+    [ScriptedImporter(3, "ply")]
     public class PlyScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = new CADImportSettings();

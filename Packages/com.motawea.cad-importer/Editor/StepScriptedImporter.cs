@@ -10,7 +10,7 @@ namespace CADImporter.Editor
     /// (auto-detected; configurable in Tools → CAD Importer). Each solid/part in the file
     /// becomes a child GameObject, preserving assembly structure and part names.
     /// </summary>
-    [ScriptedImporter(2, new[] { "step", "stp", "iges", "igs" })]
+    [ScriptedImporter(3, new[] { "step", "stp", "iges", "igs" })]
     public class StepScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = new CADImportSettings();

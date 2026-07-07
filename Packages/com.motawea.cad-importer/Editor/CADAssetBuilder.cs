@@ -71,7 +71,11 @@ namespace CADImporter.Editor
 
         static void BuildNode(Context c, CADNode node, Transform parent)
         {
-            var go = new GameObject(string.IsNullOrEmpty(node.Name) ? "Part" : Sanitize(node.Name));
+            // Sibling names must be unique: Unity derives prefab-internal file IDs from the
+            // hierarchy path, and repeated CAD part labels (e.g. four identical screws)
+            // would otherwise trigger "Identifier uniqueness violation" and break re-linking.
+            var go = new GameObject(UniqueSiblingName(parent,
+                string.IsNullOrEmpty(node.Name) ? "Part" : Sanitize(node.Name)));
             go.transform.SetParent(parent, false);
 
             var data = node.Mesh;
@@ -273,6 +277,16 @@ namespace CADImporter.Editor
                 StaticEditorFlags.ReflectionProbeStatic;
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
                 GameObjectUtility.SetStaticEditorFlags(t.gameObject, flags);
+        }
+
+        static string UniqueSiblingName(Transform parent, string baseName)
+        {
+            if (parent.Find(baseName) == null) return baseName;
+            for (int i = 1; ; i++)
+            {
+                string candidate = $"{baseName} ({i})";
+                if (parent.Find(candidate) == null) return candidate;
+            }
         }
 
         static string Sanitize(string name)
