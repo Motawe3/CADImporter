@@ -122,10 +122,9 @@ namespace CADImporter
                     for (int i = 0; i < _root["nodes"].Count; i++) sceneNodes.Add(i);
                 }
 
-                var identity = Mat4.Identity();
                 foreach (int ni in sceneNodes)
                 {
-                    var child = VisitNode(ni, identity);
+                    var child = VisitNode(ni);
                     if (child != null) _model.Root.Children.Add(child);
                 }
 
@@ -228,7 +227,7 @@ namespace CADImporter
 
             // --- node graph ----------------------------------------------------------------
 
-            CADNode VisitNode(int nodeIndex, Mat4 parentWorld)
+            CADNode VisitNode(int nodeIndex)
             {
                 var nodes = _root["nodes"];
                 if (nodeIndex < 0 || nodeIndex >= nodes.Count) return null;
@@ -237,13 +236,13 @@ namespace CADImporter
                 try
                 {
                     var node = nodes[nodeIndex];
-                    Mat4 world = parentWorld.Mul(LocalMatrix(node));
                     string nodeName = node["name"].AsString($"node{nodeIndex}");
                     var cad = new CADNode { Name = nodeName };
+                    SetLocalTransform(cad, node);
 
                     if (node.Has("mesh"))
                     {
-                        var prims = BuildMesh(node["mesh"].AsInt(), world);
+                        var prims = BuildMesh(node["mesh"].AsInt());
                         if (prims.Count == 1)
                             cad.Mesh = prims[0];
                         else
@@ -253,7 +252,7 @@ namespace CADImporter
 
                     foreach (var childIdx in node["children"].Items)
                     {
-                        var childNode = VisitNode(childIdx.AsInt(), world);
+                        var childNode = VisitNode(childIdx.AsInt());
                         if (childNode != null) cad.Children.Add(childNode);
                     }
 
@@ -264,44 +263,57 @@ namespace CADImporter
                 finally { _visiting.Remove(nodeIndex); }
             }
 
-            Mat4 LocalMatrix(JNode node)
+            /// <summary>
+            /// Reads a node's local transform and converts it from glTF (right-handed) to Unity
+            /// (left-handed) by mirroring X: translation.x and the quaternion's y,z components
+            /// are negated. Meshes are mirrored the same way by the shared pipeline
+            /// (<see cref="SourceOrientation.YUpRightHanded"/>), so the hierarchy and geometry
+            /// stay consistent while node pivots (robot joints) are preserved.
+            /// </summary>
+            void SetLocalTransform(CADNode cad, JNode node)
             {
+                float[] t, r, s;
                 if (node.Has("matrix"))
                 {
                     var m = node["matrix"].AsFloatArray();
-                    if (m != null && m.Length == 16) return new Mat4(m);
+                    if (m != null && m.Length == 16) DecomposeMatrix(m, out t, out r, out s);
+                    else { t = new[] { 0f, 0, 0 }; r = new[] { 0f, 0, 0, 1 }; s = new[] { 1f, 1, 1 }; }
                 }
-                var t = node["translation"].AsFloatArray();
-                var r = node["rotation"].AsFloatArray();
-                var s = node["scale"].AsFloatArray();
-                return Mat4.TRS(
-                    t != null && t.Length == 3 ? t : new[] { 0f, 0f, 0f },
-                    r != null && r.Length == 4 ? r : new[] { 0f, 0f, 0f, 1f },
-                    s != null && s.Length == 3 ? s : new[] { 1f, 1f, 1f });
+                else
+                {
+                    var jt = node["translation"].AsFloatArray();
+                    var jr = node["rotation"].AsFloatArray();
+                    var js = node["scale"].AsFloatArray();
+                    t = jt != null && jt.Length == 3 ? jt : new[] { 0f, 0, 0 };
+                    r = jr != null && jr.Length == 4 ? jr : new[] { 0f, 0, 0, 1 };
+                    s = js != null && js.Length == 3 ? js : new[] { 1f, 1, 1 };
+                }
+
+                cad.LocalPosition = new Vector3(-t[0], t[1], t[2]);
+                cad.LocalRotation = new Quaternion(r[0], -r[1], -r[2], r[3]);
+                cad.LocalScale = new Vector3(s[0], s[1], s[2]);
+                cad.HasLocalTransform = true;
             }
 
             // --- meshes / primitives -------------------------------------------------------
 
-            List<CADMeshData> BuildMesh(int meshIndex, Mat4 world)
+            List<CADMeshData> BuildMesh(int meshIndex)
             {
                 var result = new List<CADMeshData>();
                 var mesh = _root["meshes"][meshIndex];
                 string meshName = mesh["name"].AsString($"mesh{meshIndex}");
-
-                Mat4 normalMat = world.NormalMatrix();
-                bool flipWinding = world.Determinant3() < 0f;
-
-                int primIndex = 0;
                 foreach (var prim in mesh["primitives"].Items)
                 {
-                    var data = BuildPrimitive(prim, meshName, world, normalMat, flipWinding);
+                    var data = BuildPrimitive(prim, meshName);
                     if (data != null) result.Add(data);
-                    primIndex++;
                 }
                 return result;
             }
 
-            CADMeshData BuildPrimitive(JNode prim, string meshName, Mat4 world, Mat4 normalMat, bool flipWinding)
+            // Geometry is emitted in node-local glTF (right-handed) space; the shared
+            // MeshProcessor mirrors X and flips winding (YUpRightHanded), matching the node
+            // transform conversion in SetLocalTransform.
+            CADMeshData BuildPrimitive(JNode prim, string meshName)
             {
                 int mode = prim.Has("mode") ? prim["mode"].AsInt() : MODE_TRIANGLES;
                 if (mode != MODE_TRIANGLES && mode != MODE_TRIANGLE_STRIP && mode != MODE_TRIANGLE_FAN)
@@ -316,7 +328,7 @@ namespace CADImporter
 
                 var positions = new Vector3[vcount];
                 for (int i = 0; i < vcount; i++)
-                    positions[i] = world.TransformPoint(pos[i * posComps], pos[i * posComps + 1], pos[i * posComps + 2]);
+                    positions[i] = new Vector3(pos[i * posComps], pos[i * posComps + 1], pos[i * posComps + 2]);
 
                 Vector3[] normals = null;
                 if (attributes.Has("NORMAL"))
@@ -326,8 +338,7 @@ namespace CADImporter
                     {
                         normals = new Vector3[vcount];
                         for (int i = 0; i < vcount; i++)
-                            normals[i] = normalMat.TransformDirection(
-                                nrm[i * nc], nrm[i * nc + 1], nrm[i * nc + 2]).normalized;
+                            normals[i] = new Vector3(nrm[i * nc], nrm[i * nc + 1], nrm[i * nc + 2]);
                     }
                 }
 
@@ -356,8 +367,9 @@ namespace CADImporter
                     }
                 }
 
-                // Index buffer -> triangle list (expanding strips/fans, applying winding flip).
-                int[] tris = BuildTriangleList(prim, vcount, mode, flipWinding);
+                // Index buffer -> triangle list (expanding strips/fans). The shared pipeline
+                // flips winding globally for the right-handed -> left-handed conversion.
+                int[] tris = BuildTriangleList(prim, vcount, mode);
                 if (tris.Length < 3) return null;
 
                 string materialName = ResolveMaterial(prim);
@@ -374,7 +386,7 @@ namespace CADImporter
                 };
             }
 
-            int[] BuildTriangleList(JNode prim, int vcount, int mode, bool flipWinding)
+            int[] BuildTriangleList(JNode prim, int vcount, int mode)
             {
                 int[] src;
                 if (prim.Has("indices"))
@@ -407,10 +419,6 @@ namespace CADImporter
                     for (int i = 1; i + 1 < src.Length; i++)
                     { tri.Add(src[0]); tri.Add(src[i]); tri.Add(src[i + 1]); }
                 }
-
-                if (flipWinding)
-                    for (int i = 0; i + 2 < tri.Count; i += 3)
-                    { int t = tri[i + 1]; tri[i + 1] = tri[i + 2]; tri[i + 2] = t; }
 
                 return tri.ToArray();
             }
@@ -768,116 +776,71 @@ namespace CADImporter
         }
 
         /// <summary>
-        /// Column-major 4x4 matrix (glTF convention) using plain floats, so transform baking is
-        /// independent of any Unity maths and can be validated off-engine.
+        /// Decomposes a glTF node matrix (column-major, 16 floats) into translation, a rotation
+        /// quaternion (x,y,z,w) and scale. glTF requires node matrices to be TRS-composable (no
+        /// shear), so this is exact; a negative determinant is folded into scale.x. All values
+        /// are in glTF (right-handed) space — the caller mirrors them to Unity.
         /// </summary>
-        readonly struct Mat4
+        static void DecomposeMatrix(float[] m, out float[] t, out float[] r, out float[] s)
         {
-            readonly float[] m; // 16 elements, column-major: m[col*4 + row]
+            t = new[] { m[12], m[13], m[14] };
 
-            public Mat4(float[] cm) { m = cm; }
+            // Column vectors of the upper-left 3x3.
+            float c0x = m[0], c0y = m[1], c0z = m[2];
+            float c1x = m[4], c1y = m[5], c1z = m[6];
+            float c2x = m[8], c2y = m[9], c2z = m[10];
 
-            public static Mat4 Identity() =>
-                new Mat4(new float[] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
+            float sx = Mathf.Sqrt(c0x * c0x + c0y * c0y + c0z * c0z);
+            float sy = Mathf.Sqrt(c1x * c1x + c1y * c1y + c1z * c1z);
+            float sz = Mathf.Sqrt(c2x * c2x + c2y * c2y + c2z * c2z);
 
-            public static Mat4 TRS(float[] t, float[] q, float[] s)
+            float det = c0x * (c1y * c2z - c1z * c2y)
+                      - c1x * (c0y * c2z - c0z * c2y)
+                      + c2x * (c0y * c1z - c0z * c1y);
+            if (det < 0f) sx = -sx;
+
+            s = new[] { sx, sy, sz };
+            float ix = sx != 0 ? 1f / sx : 0f, iy = sy != 0 ? 1f / sy : 0f, iz = sz != 0 ? 1f / sz : 0f;
+
+            // Rotation matrix (columns normalized by scale), R[row,col].
+            float r00 = c0x * ix, r10 = c0y * ix, r20 = c0z * ix;
+            float r01 = c1x * iy, r11 = c1y * iy, r21 = c1z * iy;
+            float r02 = c2x * iz, r12 = c2y * iz, r22 = c2z * iz;
+
+            r = QuaternionFromRotation(r00, r01, r02, r10, r11, r12, r20, r21, r22);
+        }
+
+        /// <summary>Rotation-matrix (row,col elements) → quaternion (x,y,z,w).</summary>
+        static float[] QuaternionFromRotation(
+            float m00, float m01, float m02,
+            float m10, float m11, float m12,
+            float m20, float m21, float m22)
+        {
+            float x, y, z, w;
+            float trace = m00 + m11 + m22;
+            if (trace > 0f)
             {
-                // Rotation matrix from quaternion (x, y, z, w).
-                float x = q[0], y = q[1], z = q[2], w = q[3];
-                float xx = x * x, yy = y * y, zz = z * z;
-                float xy = x * y, xz = x * z, yz = y * z;
-                float wx = w * x, wy = w * y, wz = w * z;
-                float sx = s[0], sy = s[1], sz = s[2];
-
-                var r = new float[16];
-                // Column 0 (scaled by sx)
-                r[0] = (1 - 2 * (yy + zz)) * sx;
-                r[1] = (2 * (xy + wz)) * sx;
-                r[2] = (2 * (xz - wy)) * sx;
-                r[3] = 0;
-                // Column 1 (scaled by sy)
-                r[4] = (2 * (xy - wz)) * sy;
-                r[5] = (1 - 2 * (xx + zz)) * sy;
-                r[6] = (2 * (yz + wx)) * sy;
-                r[7] = 0;
-                // Column 2 (scaled by sz)
-                r[8] = (2 * (xz + wy)) * sz;
-                r[9] = (2 * (yz - wx)) * sz;
-                r[10] = (1 - 2 * (xx + yy)) * sz;
-                r[11] = 0;
-                // Column 3 (translation)
-                r[12] = t[0]; r[13] = t[1]; r[14] = t[2]; r[15] = 1;
-                return new Mat4(r);
+                float sc = Mathf.Sqrt(trace + 1f) * 2f;
+                w = 0.25f * sc; x = (m21 - m12) / sc; y = (m02 - m20) / sc; z = (m10 - m01) / sc;
             }
-
-            public Mat4 Mul(Mat4 b)
+            else if (m00 > m11 && m00 > m22)
             {
-                var a = m; var bb = b.m;
-                var r = new float[16];
-                for (int col = 0; col < 4; col++)
-                    for (int row = 0; row < 4; row++)
-                    {
-                        float sum = 0;
-                        for (int k = 0; k < 4; k++) sum += a[k * 4 + row] * bb[col * 4 + k];
-                        r[col * 4 + row] = sum;
-                    }
-                return new Mat4(r);
+                float sc = Mathf.Sqrt(1f + m00 - m11 - m22) * 2f;
+                w = (m21 - m12) / sc; x = 0.25f * sc; y = (m01 + m10) / sc; z = (m02 + m20) / sc;
             }
-
-            public Vector3 TransformPoint(float x, float y, float z) => new Vector3(
-                m[0] * x + m[4] * y + m[8] * z + m[12],
-                m[1] * x + m[5] * y + m[9] * z + m[13],
-                m[2] * x + m[6] * y + m[10] * z + m[14]);
-
-            public Vector3 TransformDirection(float x, float y, float z) => new Vector3(
-                m[0] * x + m[4] * y + m[8] * z,
-                m[1] * x + m[5] * y + m[9] * z,
-                m[2] * x + m[6] * y + m[10] * z);
-
-            public float Determinant3()
+            else if (m11 > m22)
             {
-                float m00 = m[0], m01 = m[4], m02 = m[8];
-                float m10 = m[1], m11 = m[5], m12 = m[9];
-                float m20 = m[2], m21 = m[6], m22 = m[10];
-                return m00 * (m11 * m22 - m12 * m21)
-                     - m01 * (m10 * m22 - m12 * m20)
-                     + m02 * (m10 * m21 - m11 * m20);
+                float sc = Mathf.Sqrt(1f + m11 - m00 - m22) * 2f;
+                w = (m02 - m20) / sc; x = (m01 + m10) / sc; y = 0.25f * sc; z = (m12 + m21) / sc;
             }
-
-            /// <summary>Inverse-transpose of the upper-left 3x3, for correct normals under
-            /// non-uniform scale. Falls back to the plain 3x3 when near-singular.</summary>
-            public Mat4 NormalMatrix()
+            else
             {
-                float m00 = m[0], m01 = m[4], m02 = m[8];
-                float m10 = m[1], m11 = m[5], m12 = m[9];
-                float m20 = m[2], m21 = m[6], m22 = m[10];
-
-                float c00 = m11 * m22 - m12 * m21;
-                float c01 = m12 * m20 - m10 * m22;
-                float c02 = m10 * m21 - m11 * m20;
-                float det = m00 * c00 + m01 * c01 + m02 * c02;
-
-                if (Mathf.Abs(det) < 1e-12f)
-                    return new Mat4(new float[] { m00, m10, m20, 0, m01, m11, m21, 0, m02, m12, m22, 0, 0, 0, 0, 1 });
-
-                float c10 = m02 * m21 - m01 * m22;
-                float c11 = m00 * m22 - m02 * m20;
-                float c12 = m01 * m20 - m00 * m21;
-                float c20 = m01 * m12 - m02 * m11;
-                float c21 = m02 * m10 - m00 * m12;
-                float c22 = m00 * m11 - m01 * m10;
-                float inv = 1f / det;
-
-                // Normal matrix = inverse-transpose(M3) = cofactor(M3)/det. TransformDirection
-                // needs element(row,col) at column-major index col*4+row, and element(r,c) = C_rc/det,
-                // so column c holds (C_0c, C_1c, C_2c)/det. (For a pure rotation this reduces to R.)
-                var r = new float[16];
-                r[0] = c00 * inv; r[1] = c10 * inv; r[2] = c20 * inv; r[3] = 0;  // column 0
-                r[4] = c01 * inv; r[5] = c11 * inv; r[6] = c21 * inv; r[7] = 0;  // column 1
-                r[8] = c02 * inv; r[9] = c12 * inv; r[10] = c22 * inv; r[11] = 0; // column 2
-                r[12] = 0; r[13] = 0; r[14] = 0; r[15] = 1;
-                return new Mat4(r);
+                float sc = Mathf.Sqrt(1f + m22 - m00 - m11) * 2f;
+                w = (m10 - m01) / sc; x = (m02 + m20) / sc; y = (m12 + m21) / sc; z = 0.25f * sc;
             }
+            float len = Mathf.Sqrt(x * x + y * y + z * z + w * w);
+            if (len > 1e-8f) { x /= len; y /= len; z /= len; w /= len; }
+            return new[] { x, y, z, w };
         }
     }
 }

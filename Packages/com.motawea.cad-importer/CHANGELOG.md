@@ -4,6 +4,20 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-09
+
+### Changed
+- **glTF node hierarchy and pivots are now preserved instead of baked.** Each glTF node
+  becomes a GameObject carrying its own local transform (position/rotation/scale), so
+  articulation rigs — robot joints, kinematic trees — import with their pivots intact rather
+  than flattened to the origin. Node `matrix` forms are decomposed to TRS; the glTF→Unity
+  axis conversion is applied consistently to both transforms and geometry.
+
+### Added
+- `CADNode.LocalPosition` / `LocalRotation` / `LocalScale` / `HasLocalTransform` — scene
+  formats populate them; formats that bake placement into vertices (STL, STEP) leave them
+  identity, so their import is unchanged.
+
 ## [1.2.1] - 2026-07-09
 
 ### Fixed

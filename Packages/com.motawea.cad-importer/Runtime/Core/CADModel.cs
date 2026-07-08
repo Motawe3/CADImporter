@@ -101,6 +101,18 @@ namespace CADImporter
         public string Name;
         public CADMeshData Mesh;
         public readonly List<CADNode> Children = new List<CADNode>();
+
+        /// <summary>
+        /// Local transform relative to the parent, applied to the built GameObject when
+        /// <see cref="HasLocalTransform"/> is true. Formats that bake placement into vertices
+        /// (STL, STEP, OBJ) leave this identity; scene formats with a real node graph (glTF)
+        /// set it so pivots and articulation joints are preserved. <see cref="LocalPosition"/>
+        /// is in the source's length unit and is scaled with the geometry at build time.
+        /// </summary>
+        public Vector3 LocalPosition = Vector3.zero;
+        public Quaternion LocalRotation = Quaternion.identity;
+        public Vector3 LocalScale = Vector3.one;
+        public bool HasLocalTransform;
     }
 
     /// <summary>How a material's alpha is interpreted (glTF alphaMode).</summary>

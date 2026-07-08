@@ -456,20 +456,24 @@ namespace CADImporter.Tests
         // --- glTF / GLB --------------------------------------------------------------------
 
         [Test]
-        public void GltfGlb_BakesNodeTransformAndParsesMaterial()
+        public void GltfGlb_PreservesNodeTransformAndParsesMaterial()
         {
             byte[] glb = BuildQuadGlb();
             var model = GltfParser.Parse(glb, "quad", null);
 
             Assert.AreEqual("GLB", model.Format);
             Assert.AreEqual(1, model.Root.Children.Count);
-            var mesh = model.Root.Children[0].Mesh;
+            var node = model.Root.Children[0];
+            var mesh = node.Mesh;
             Assert.IsNotNull(mesh);
             Assert.AreEqual(4, mesh.VertexCount);
             Assert.AreEqual(2, mesh.TriangleCount);
-            // Node translation (10,0,0) must be baked into positions (still glTF/RH space).
-            Assert.AreEqual(10f, mesh.Positions[0].x, 1e-4f);
-            Assert.AreEqual(11f, mesh.Positions[1].x, 1e-4f);
+            // The node transform is preserved (not baked). glTF translation (10,0,0) mirrors to
+            // Unity (-10,0,0); vertices stay in node-local space.
+            Assert.IsTrue(node.HasLocalTransform);
+            Assert.AreEqual(-10f, node.LocalPosition.x, 1e-4f);
+            Assert.AreEqual(0f, mesh.Positions[0].x, 1e-4f);
+            Assert.AreEqual(1f, mesh.Positions[1].x, 1e-4f);
             // glTF's top-down V is flipped to Unity's bottom-up convention.
             Assert.AreEqual(0f, mesh.UV[0].y, 1e-4f);
 
@@ -483,16 +487,19 @@ namespace CADImporter.Tests
         }
 
         [Test]
-        public void Gltf_ThroughPipeline_ConvertsToUnityAxes()
+        public void Gltf_ThroughPipeline_MirrorsLocalMeshAndKeepsNodeTransform()
         {
             var model = GltfParser.Parse(BuildQuadGlb(), "quad", null);
+            var node = model.Root.Children[0];
             var opts = MetersNoConvert();
             opts.Orientation = SourceOrientation.YUpRightHanded; // how the glTF importer runs it
             MeshProcessor.Process(model, opts);
-            var mesh = model.Root.Children[0].Mesh;
-            // YUpRightHanded mirrors X: baked x=10 becomes -10.
-            Assert.AreEqual(-10f, mesh.Positions[0].x, 1e-4f);
+            var mesh = node.Mesh;
+            // Pipeline mirrors X on the local mesh: local v1.x = 1 -> -1.
+            Assert.AreEqual(-1f, mesh.Positions[1].x, 1e-4f);
             Assert.IsNotNull(mesh.Normals);
+            // Node transform is untouched by MeshProcessor (it only transforms geometry).
+            Assert.AreEqual(-10f, node.LocalPosition.x, 1e-4f);
         }
 
         [Test]

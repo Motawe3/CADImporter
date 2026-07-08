@@ -20,6 +20,7 @@ namespace CADImporter.Editor
             public Dictionary<string, Material> Materials;
             public Dictionary<string, Texture2D> TexCache;
             public Material DefaultMaterial;
+            public float Scale;
             public int AssetId;
             public int TotalVertices, TotalTriangles, PartCount;
         }
@@ -33,7 +34,8 @@ namespace CADImporter.Editor
                 Ctx = ctx,
                 Settings = settings,
                 Materials = new Dictionary<string, Material>(),
-                TexCache = new Dictionary<string, Texture2D>()
+                TexCache = new Dictionary<string, Texture2D>(),
+                Scale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale
             };
 
             bool vertexColorUnlit = settings.materialMode == MaterialMode.VertexColorUnlit;
@@ -80,6 +82,16 @@ namespace CADImporter.Editor
             var go = new GameObject(UniqueSiblingName(parent,
                 string.IsNullOrEmpty(node.Name) ? "Part" : Sanitize(node.Name)));
             go.transform.SetParent(parent, false);
+
+            // Scene formats (glTF) carry a real node graph; apply each node's local transform so
+            // pivots and articulation joints are preserved. LocalPosition is scaled with the
+            // geometry (which MeshProcessor already scaled) to keep the model uniformly sized.
+            if (node.HasLocalTransform)
+            {
+                go.transform.localPosition = node.LocalPosition * c.Scale;
+                go.transform.localRotation = node.LocalRotation;
+                go.transform.localScale = node.LocalScale;
+            }
 
             var data = node.Mesh;
             if (data != null && data.TriangleCount > 0)

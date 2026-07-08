@@ -112,9 +112,10 @@ namespace CADImporter
                 if (!string.IsNullOrEmpty(m.Name) && !materialLookup.ContainsKey(m.Name))
                     materialLookup[m.Name] = CadMaterialFactory.Create(m, false, DefaultColor, texCache).Material;
 
+            float scale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale;
             int totalV = 0, totalT = 0, parts = 0;
             foreach (var child in model.Root.Children)
-                BuildNode(child, root.transform, settings, materialLookup, ref totalV, ref totalT, ref parts);
+                BuildNode(child, root.transform, settings, materialLookup, scale, ref totalV, ref totalT, ref parts);
 
             var info = root.AddComponent<CADModelInfo>();
             info.sourceFile = model.SourcePath ?? model.Name;
@@ -129,10 +130,16 @@ namespace CADImporter
         }
 
         static void BuildNode(CADNode node, Transform parent, CADRuntimeImportSettings settings,
-            Dictionary<string, Material> materials, ref int totalV, ref int totalT, ref int parts)
+            Dictionary<string, Material> materials, float scale, ref int totalV, ref int totalT, ref int parts)
         {
             var go = new GameObject(string.IsNullOrEmpty(node.Name) ? "Part" : node.Name);
             go.transform.SetParent(parent, false);
+            if (node.HasLocalTransform)
+            {
+                go.transform.localPosition = node.LocalPosition * scale;
+                go.transform.localRotation = node.LocalRotation;
+                go.transform.localScale = node.LocalScale;
+            }
 
             var data = node.Mesh;
             if (data != null && data.TriangleCount > 0)
@@ -169,7 +176,7 @@ namespace CADImporter
             }
 
             foreach (var child in node.Children)
-                BuildNode(child, go.transform, settings, materials, ref totalV, ref totalT, ref parts);
+                BuildNode(child, go.transform, settings, materials, scale, ref totalV, ref totalT, ref parts);
         }
 
         static Material[] ResolveMaterials(CADMeshData data, CADRuntimeImportSettings settings,
