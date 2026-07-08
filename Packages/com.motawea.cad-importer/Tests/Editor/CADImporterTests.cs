@@ -452,5 +452,134 @@ namespace CADImporter.Tests
                 File.Delete(tmp);
             }
         }
+
+        // --- glTF / GLB --------------------------------------------------------------------
+
+        [Test]
+        public void GltfGlb_BakesNodeTransformAndParsesMaterial()
+        {
+            byte[] glb = BuildQuadGlb();
+            var model = GltfParser.Parse(glb, "quad", null);
+
+            Assert.AreEqual("GLB", model.Format);
+            Assert.AreEqual(1, model.Root.Children.Count);
+            var mesh = model.Root.Children[0].Mesh;
+            Assert.IsNotNull(mesh);
+            Assert.AreEqual(4, mesh.VertexCount);
+            Assert.AreEqual(2, mesh.TriangleCount);
+            // Node translation (10,0,0) must be baked into positions (still glTF/RH space).
+            Assert.AreEqual(10f, mesh.Positions[0].x, 1e-4f);
+            Assert.AreEqual(11f, mesh.Positions[1].x, 1e-4f);
+            // glTF's top-down V is flipped to Unity's bottom-up convention.
+            Assert.AreEqual(0f, mesh.UV[0].y, 1e-4f);
+
+            Assert.AreEqual(1, model.Materials.Count);
+            var mat = model.Materials[0];
+            Assert.AreEqual(1f, mat.Color.r, 1e-4f);
+            Assert.AreEqual(0f, mat.Color.g, 1e-4f);
+            Assert.AreEqual(0.5f, mat.Smoothness, 1e-4f); // 1 - roughness(0.5)
+            Assert.IsNotNull(mat.BaseColorTex);
+            Assert.AreEqual(CADAlphaMode.Opaque, mat.AlphaMode);
+        }
+
+        [Test]
+        public void Gltf_ThroughPipeline_ConvertsToUnityAxes()
+        {
+            var model = GltfParser.Parse(BuildQuadGlb(), "quad", null);
+            var opts = MetersNoConvert();
+            opts.Orientation = SourceOrientation.YUpRightHanded; // how the glTF importer runs it
+            MeshProcessor.Process(model, opts);
+            var mesh = model.Root.Children[0].Mesh;
+            // YUpRightHanded mirrors X: baked x=10 becomes -10.
+            Assert.AreEqual(-10f, mesh.Positions[0].x, 1e-4f);
+            Assert.IsNotNull(mesh.Normals);
+        }
+
+        [Test]
+        public void Gltf_RejectsDracoCompressionWithClearError()
+        {
+            string json = "{ \"asset\": { \"version\": \"2.0\" }, " +
+                          "\"extensionsRequired\": [\"KHR_draco_mesh_compression\"], " +
+                          "\"scenes\": [{ \"nodes\": [] }], \"buffers\": [] }";
+            byte[] glb = WrapGlb(json, new byte[0]);
+            var ex = Assert.Throws<InvalidDataException>(() => GltfParser.Parse(glb, "x", null));
+            StringAssert.Contains("compression", ex.Message);
+        }
+
+        [Test]
+        public void GltfRepack_MetallicRoughnessAndOcclusionChannels()
+        {
+            var mr = new[] { new Color32(9, 200, 128, 77) };
+            TextureRepack.MetallicRoughnessGltfToUnity(mr);
+            Assert.AreEqual(128, mr[0].r);          // metallic from glTF B
+            Assert.AreEqual(255 - 200, mr[0].a);    // smoothness = 1 - roughness(G)
+
+            var occ = new[] { new Color32(180, 5, 6, 7) };
+            TextureRepack.OcclusionGltfToUnity(occ);
+            Assert.AreEqual(180, occ[0].g);         // occlusion sampled from G in Unity
+        }
+
+        /// <summary>Builds an in-memory GLB: a unit quad translated by (10,0,0) with a red
+        /// metallic-roughness material carrying an embedded (dummy) base-colour image.</summary>
+        static byte[] BuildQuadGlb()
+        {
+            var bin = new List<byte>();
+            void Align4() { while (bin.Count % 4 != 0) bin.Add(0); }
+            void AddF(float f) => bin.AddRange(BitConverter.GetBytes(f));
+            void AddU16(ushort v) => bin.AddRange(BitConverter.GetBytes(v));
+
+            int posOff = bin.Count;
+            float[] pos = { 0,0,0, 1,0,0, 1,1,0, 0,1,0 };
+            foreach (var f in pos) AddF(f);
+            int uvOff = bin.Count;
+            float[] uv = { 0,1, 1,1, 1,0, 0,0 };
+            foreach (var f in uv) AddF(f);
+            int idxOff = bin.Count;
+            ushort[] idx = { 0,1,2, 0,2,3 };
+            foreach (var i in idx) AddU16(i);
+            Align4();
+            int imgOff = bin.Count;
+            byte[] img = { 0xDE, 0xAD, 0xBE, 0xEF };
+            bin.AddRange(img);
+            Align4();
+
+            byte[] binArr = bin.ToArray();
+            string json = "{" +
+              "\"asset\":{\"version\":\"2.0\"}," +
+              "\"scene\":0,\"scenes\":[{\"nodes\":[0]}]," +
+              "\"nodes\":[{\"name\":\"quad\",\"mesh\":0,\"translation\":[10,0,0]}]," +
+              "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},\"indices\":2,\"material\":0}]}]," +
+              "\"materials\":[{\"name\":\"Red\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,0,0,1],\"metallicFactor\":0.0,\"roughnessFactor\":0.5,\"baseColorTexture\":{\"index\":0}}}]," +
+              "\"textures\":[{\"source\":0}]," +
+              "\"images\":[{\"bufferView\":3,\"mimeType\":\"image/png\"}]," +
+              "\"accessors\":[" +
+                "{\"bufferView\":0,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"}," +
+                "{\"bufferView\":1,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"}," +
+                "{\"bufferView\":2,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"}]," +
+              "\"bufferViews\":[" +
+                "{\"buffer\":0,\"byteOffset\":" + posOff + ",\"byteLength\":48}," +
+                "{\"buffer\":0,\"byteOffset\":" + uvOff + ",\"byteLength\":32}," +
+                "{\"buffer\":0,\"byteOffset\":" + idxOff + ",\"byteLength\":12}," +
+                "{\"buffer\":0,\"byteOffset\":" + imgOff + ",\"byteLength\":" + img.Length + "}]," +
+              "\"buffers\":[{\"byteLength\":" + binArr.Length + "}]}";
+            return WrapGlb(json, binArr);
+        }
+
+        static byte[] WrapGlb(string json, byte[] bin)
+        {
+            var jsonPad = new List<byte>(Encoding.UTF8.GetBytes(json));
+            while (jsonPad.Count % 4 != 0) jsonPad.Add(0x20);
+            var binPad = new List<byte>(bin);
+            while (binPad.Count % 4 != 0) binPad.Add(0);
+
+            var o = new List<byte>();
+            void U32(uint v) => o.AddRange(BitConverter.GetBytes(v));
+            int total = 12 + 8 + jsonPad.Count + (bin.Length > 0 ? 8 + binPad.Count : 0);
+            o.AddRange(new byte[] { 0x67, 0x6C, 0x54, 0x46 });
+            U32(2); U32((uint)total);
+            U32((uint)jsonPad.Count); U32(0x4E4F534A); o.AddRange(jsonPad);
+            if (bin.Length > 0) { U32((uint)binPad.Count); U32(0x004E4942); o.AddRange(binPad); }
+            return o.ToArray();
+        }
     }
 }

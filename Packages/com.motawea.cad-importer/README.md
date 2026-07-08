@@ -27,6 +27,7 @@ Or add it to `Packages/manifest.json` directly:
 | STL (binary + ASCII) | ✔ drag & drop | ✔ | Multi-solid ASCII files become separate parts |
 | PLY (ascii / binary LE / binary BE) | ✔ drag & drop | ✔ | Vertex colors and UVs preserved |
 | OBJ | Unity native importer | ✔ | Runtime path supports groups, materials, negative indices |
+| glTF 2.0 / GLB | ✔ drag & drop | ✔ | Node hierarchy, metallic-roughness PBR + textures, embedded/external/base64 buffers. No Draco/meshopt/KTX2 |
 | STEP / IGES | ✔ via FreeCAD | – | Parts and labels preserved; requires [FreeCAD](https://www.freecad.org) |
 
 ## Quick start
@@ -126,6 +127,10 @@ com.motawea.cad-importer/
   in a scene or add it to *Project Settings → Graphics → Always Included Shaders*), or pass
   your own material in `CADRuntimeImportSettings.material`.
 - STL per-face attribute colors (nonstandard SolidWorks/Magics extensions) are ignored.
+- glTF/GLB import covers uncompressed files with PNG/JPEG textures. Draco, meshopt and
+  KTX2/basisu compression are not decoded — re-export without them. glTF materials become
+  URP Lit (metallic-roughness); occlusion and metallic-roughness maps are channel-repacked
+  to Unity's layout.
 
 ## License
 

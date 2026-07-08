@@ -103,13 +103,59 @@ namespace CADImporter
         public readonly List<CADNode> Children = new List<CADNode>();
     }
 
-    /// <summary>Material description parsed from the source file (e.g. OBJ .mtl).</summary>
+    /// <summary>How a material's alpha is interpreted (glTF alphaMode).</summary>
+    public enum CADAlphaMode { Opaque, Mask, Blend }
+
+    /// <summary>
+    /// An encoded (PNG/JPEG) texture image carried through the parser as raw bytes.
+    /// Decoding to a <c>Texture2D</c> is deferred to the builders, which run on the main
+    /// thread — <see cref="UnityEngine.ImageConversion"/> is not thread-safe.
+    /// </summary>
+    public sealed class CADTextureImage
+    {
+        public string Name = "Texture";
+        public byte[] EncodedBytes;
+        /// <summary>UV set index the material samples this image with (only 0 is supported).</summary>
+        public int TexCoord;
+        /// <summary>True for non-color data (normal / metallic-roughness / occlusion maps).</summary>
+        public bool Linear;
+        /// <summary>Stable key for de-duplicating identical source images into one Texture2D.</summary>
+        public string CacheKey;
+    }
+
+    /// <summary>
+    /// Material description parsed from the source file. Colour + smoothness/metallic cover
+    /// simple formats (OBJ .mtl, STEP); the texture and factor fields carry full glTF
+    /// metallic-roughness PBR. Texture fields are null when the format has no maps.
+    /// </summary>
     public sealed class CADMaterialInfo
     {
         public string Name;
+        /// <summary>Base colour factor (RGBA). Multiplies <see cref="BaseColorTex"/> when present.</summary>
         public Color Color = new Color(0.75f, 0.75f, 0.78f, 1f);
         public float Smoothness = 0.4f;
         public float Metallic;
+
+        // --- glTF metallic-roughness PBR (all optional) ---
+        public CADTextureImage BaseColorTex;
+        /// <summary>Packed map, glTF convention: G = roughness, B = metallic.</summary>
+        public CADTextureImage MetallicRoughnessTex;
+        public CADTextureImage NormalTex;
+        public float NormalScale = 1f;
+        /// <summary>Packed map, glTF convention: R = occlusion.</summary>
+        public CADTextureImage OcclusionTex;
+        public float OcclusionStrength = 1f;
+        public Color EmissiveColor = Color.black;
+        public CADTextureImage EmissiveTex;
+        public CADAlphaMode AlphaMode = CADAlphaMode.Opaque;
+        public float AlphaCutoff = 0.5f;
+        public bool DoubleSided;
+        /// <summary>KHR_materials_unlit — shade as flat base colour, ignore lighting.</summary>
+        public bool Unlit;
+
+        public bool HasTextures =>
+            BaseColorTex != null || MetallicRoughnessTex != null || NormalTex != null ||
+            OcclusionTex != null || EmissiveTex != null;
     }
 
     /// <summary>Root object produced by every parser.</summary>

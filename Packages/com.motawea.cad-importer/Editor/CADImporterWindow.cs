@@ -26,7 +26,7 @@ namespace CADImporter.Editor
         const string FolderPrefsKey = "CADImporter.TargetFolder";
 
         static readonly string[] SupportedExtensions =
-            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs" };
+            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb" };
 
         readonly List<string> files = new List<string>();
         SettingsHolder holder;
@@ -117,7 +117,7 @@ namespace CADImporter.Editor
             if (GUILayout.Button("Add Files…"))
             {
                 string picked = EditorUtility.OpenFilePanel("Select CAD file",
-                    "", "stl,ply,obj,step,stp,iges,igs");
+                    "", "stl,ply,obj,step,stp,iges,igs,gltf,glb");
                 if (!string.IsNullOrEmpty(picked) && !files.Contains(picked))
                     files.Add(picked);
             }
@@ -324,6 +324,14 @@ namespace CADImporter.Editor
                 case StlScriptedImporter stl: stl.settings = holder.settings.Clone(); break;
                 case PlyScriptedImporter ply: ply.settings = holder.settings.Clone(); break;
                 case StepScriptedImporter step: step.settings = holder.settings.Clone(); break;
+                case GltfScriptedImporter gltf:
+                    // glTF's unit and axis convention are fixed by the spec; keep them correct
+                    // regardless of the window's shared (CAD-oriented) defaults.
+                    var gs = holder.settings.Clone();
+                    gs.sourceUnit = SourceUnit.Meters;
+                    gs.sourceOrientation = SourceOrientation.YUpRightHanded;
+                    gltf.settings = gs;
+                    break;
                 default:
                     applied = false; // e.g. OBJ → Unity's native model importer
                     break;

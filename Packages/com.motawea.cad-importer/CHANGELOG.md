@@ -4,6 +4,27 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-09
+
+### Added
+- **glTF 2.0 (.gltf) and binary GLB (.glb) import** — editor (drag & drop / batch window)
+  and runtime (`CADRuntimeImporter`). Pure-C# parser, no external dependencies:
+  - Binary GLB container plus text .gltf with embedded, external, and base64 data-URI
+    buffers and images.
+  - Full accessor decoding: every component type, normalized integers, interleaved
+    `byteStride`, and sparse accessors; indexed and non-indexed primitives; triangle
+    lists, strips and fans.
+  - Node-graph transforms (TRS or matrix) baked into geometry, with correct normals under
+    non-uniform scale and winding flips for mirrored (negative-scale) nodes.
+  - Metallic-roughness PBR materials: base colour, metallic-roughness, normal, occlusion
+    and emissive maps (glTF→Unity channel repacking), alpha mode (opaque/mask/blend),
+    double-sided, and `KHR_materials_unlit` / `KHR_materials_emissive_strength`.
+  - Geometry flows through the same pipeline as every other format (welding, LODs,
+    simplified colliders). glTF's metre / Y-up right-handed convention is applied by default.
+  - Files requiring Draco, meshopt or KTX2/basisu compression fail with a clear message
+    (re-export uncompressed with PNG/JPEG textures).
+- Material system now carries full PBR (textures + factors), shared by all importers.
+
 ## [1.1.0] - 2026-07-08
 
 ### Added

@@ -18,6 +18,7 @@ namespace CADImporter.Editor
             public AssetImportContext Ctx;
             public CADImportSettings Settings;
             public Dictionary<string, Material> Materials;
+            public Dictionary<string, Texture2D> TexCache;
             public Material DefaultMaterial;
             public int AssetId;
             public int TotalVertices, TotalTriangles, PartCount;
@@ -31,13 +32,15 @@ namespace CADImporter.Editor
             {
                 Ctx = ctx,
                 Settings = settings,
-                Materials = new Dictionary<string, Material>()
+                Materials = new Dictionary<string, Material>(),
+                TexCache = new Dictionary<string, Texture2D>()
             };
 
-            c.DefaultMaterial = CreateMaterial(c, "CAD_Default", settings.defaultColor, 0.4f);
+            bool vertexColorUnlit = settings.materialMode == MaterialMode.VertexColorUnlit;
+            c.DefaultMaterial = BuildMaterial(c, null, vertexColorUnlit, settings.defaultColor);
             foreach (var m in model.Materials)
                 if (!string.IsNullOrEmpty(m.Name) && !c.Materials.ContainsKey(m.Name))
-                    c.Materials[m.Name] = CreateMaterial(c, m.Name, m.Color, m.Smoothness);
+                    c.Materials[m.Name] = BuildMaterial(c, m, vertexColorUnlit, settings.defaultColor);
 
             var root = new GameObject(model.Name);
             foreach (var child in model.Root.Children)
@@ -245,22 +248,12 @@ namespace CADImporter.Editor
             return result;
         }
 
-        static Material CreateMaterial(Context c, string name, Color color, float smoothness)
+        static Material BuildMaterial(Context c, CADMaterialInfo info, bool vertexColorUnlit, Color fallback)
         {
-            Shader shader = null;
-            if (c.Settings.materialMode == MaterialMode.VertexColorUnlit)
-                shader = Shader.Find("CAD Importer/Vertex Color Unlit");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-                shader = Shader.Find("Standard");
-
-            var mat = new Material(shader) { name = Sanitize(name) };
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
-            AddAsset(c, mat);
-            return mat;
+            var res = CadMaterialFactory.Create(info, vertexColorUnlit, fallback, c.TexCache);
+            foreach (var tex in res.CreatedTextures) AddAsset(c, tex);
+            AddAsset(c, res.Material);
+            return res.Material;
         }
 
         static void AddAsset(Context c, UnityEngine.Object obj)

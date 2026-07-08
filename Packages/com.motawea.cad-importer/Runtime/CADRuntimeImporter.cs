@@ -54,6 +54,8 @@ namespace CADImporter
                 case ".stl":
                 case ".ply":
                 case ".obj":
+                case ".gltf":
+                case ".glb":
                     return true;
                 default:
                     return false;
@@ -87,9 +89,11 @@ namespace CADImporter
                 case ".stl": model = StlParser.Parse(path); break;
                 case ".ply": model = PlyParser.Parse(path); break;
                 case ".obj": model = ObjParser.Parse(path); break;
+                case ".gltf":
+                case ".glb": model = GltfParser.Parse(path); break;
                 default:
                     throw new NotSupportedException(
-                        $"Runtime import supports .stl/.ply/.obj — got '{Path.GetExtension(path)}'. " +
+                        $"Runtime import supports .stl/.ply/.obj/.gltf/.glb — got '{Path.GetExtension(path)}'. " +
                         "Convert STEP/IGES in the editor (or offline) first.");
             }
 
@@ -102,9 +106,11 @@ namespace CADImporter
             var root = new GameObject(model.Name);
             if (parent != null) root.transform.SetParent(parent, false);
 
+            var texCache = new Dictionary<string, Texture2D>();
             var materialLookup = new Dictionary<string, Material>();
             foreach (var m in model.Materials)
-                materialLookup[m.Name] = CreateMaterial(m.Name, m.Color, m.Smoothness);
+                if (!string.IsNullOrEmpty(m.Name) && !materialLookup.ContainsKey(m.Name))
+                    materialLookup[m.Name] = CadMaterialFactory.Create(m, false, DefaultColor, texCache).Material;
 
             int totalV = 0, totalT = 0, parts = 0;
             foreach (var child in model.Root.Children)
@@ -182,25 +188,15 @@ namespace CADImporter
             return result;
         }
 
+        // Note: for builds, ensure the URP Lit shader is referenced by some asset or listed in
+        // "Always Included Shaders", otherwise the factory's Shader.Find returns null.
+        static readonly Color DefaultColor = new Color(0.75f, 0.75f, 0.78f);
+
         static Material DefaultMaterial()
         {
             if (s_defaultMaterial == null)
-                s_defaultMaterial = CreateMaterial("CAD_Default", new Color(0.75f, 0.75f, 0.78f), 0.4f);
+                s_defaultMaterial = CadMaterialFactory.Create(null, false, DefaultColor, null).Material;
             return s_defaultMaterial;
-        }
-
-        static Material CreateMaterial(string name, Color color, float smoothness)
-        {
-            // Note: for builds, ensure the URP Lit shader is referenced by some asset or
-            // listed in "Always Included Shaders", otherwise Shader.Find returns null.
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Standard");
-            if (shader == null) shader = Shader.Find("CAD Importer/Vertex Color Unlit");
-            var mat = new Material(shader) { name = name };
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
-            return mat;
         }
     }
 }
