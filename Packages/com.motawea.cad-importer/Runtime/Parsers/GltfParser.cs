@@ -36,6 +36,42 @@ namespace CADImporter
             return model;
         }
 
+        /// <summary>
+        /// Returns the external file URIs (relative to the .gltf) that a text glTF references
+        /// for its buffers and images — i.e. the sidecar files that must travel with it (a
+        /// typical "scene.gltf + scene.bin + textures/*" export). Data-URI resources and GLB
+        /// files (which embed everything) return an empty list. Used by the batch importer to
+        /// copy dependencies into the project alongside the .gltf.
+        /// </summary>
+        public static List<string> GetExternalResources(string gltfPath)
+        {
+            var result = new List<string>();
+            byte[] bytes = File.ReadAllBytes(gltfPath);
+            // GLB embeds its buffers/images; nothing external to copy.
+            if (bytes.Length >= 4 && bytes[0] == 0x67 && bytes[1] == 0x6C && bytes[2] == 0x54 && bytes[3] == 0x46)
+                return result;
+
+            int off = (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ? 3 : 0;
+            JNode root;
+            try { root = JNode.Parse(Encoding.UTF8.GetString(bytes, off, bytes.Length - off)); }
+            catch { return result; }
+
+            void Collect(JNode arr)
+            {
+                foreach (var item in arr.Items)
+                {
+                    string uri = item["uri"].AsString();
+                    if (string.IsNullOrEmpty(uri) || uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string rel = Uri.UnescapeDataString(uri);
+                    if (!result.Contains(rel)) result.Add(rel);
+                }
+            }
+            Collect(root["buffers"]);
+            Collect(root["images"]);
+            return result;
+        }
+
         public static CADModel Parse(byte[] fileBytes, string name, string baseDir)
         {
             var impl = new Impl(baseDir);

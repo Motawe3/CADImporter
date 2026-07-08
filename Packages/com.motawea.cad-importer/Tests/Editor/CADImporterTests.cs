@@ -519,6 +519,27 @@ namespace CADImporter.Tests
             Assert.AreEqual(180, occ[0].g);         // occlusion sampled from G in Unity
         }
 
+        [Test]
+        public void Gltf_GetExternalResources_ListsSidecarsExcludingDataUris()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), $"gltfext_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "scene.gltf");
+            try
+            {
+                File.WriteAllText(path,
+                    "{ \"asset\": {\"version\":\"2.0\"}, " +
+                    "\"buffers\": [ {\"uri\":\"scene.bin\"}, {\"uri\":\"data:application/octet-stream;base64,AAAA\"} ], " +
+                    "\"images\": [ {\"uri\":\"textures/wood%20grain.png\"} ] }");
+                var ext = GltfParser.GetExternalResources(path);
+                Assert.AreEqual(2, ext.Count);
+                Assert.Contains("scene.bin", ext);
+                Assert.Contains("textures/wood grain.png", ext); // URI-unescaped
+                Assert.IsFalse(ext.Exists(u => u.StartsWith("data:")));
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
         /// <summary>Builds an in-memory GLB: a unit quad translated by (10,0,0) with a red
         /// metallic-roughness material carrying an embedded (dummy) base-colour image.</summary>
         static byte[] BuildQuadGlb()

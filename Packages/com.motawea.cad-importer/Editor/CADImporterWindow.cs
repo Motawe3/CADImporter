@@ -310,10 +310,20 @@ namespace CADImporter.Editor
         string ImportOne(string sourcePath)
         {
             string ext = Path.GetExtension(sourcePath).ToLowerInvariant();
-            string assetPath = AssetDatabase.GenerateUniqueAssetPath(
-                $"{targetFolder}/{Path.GetFileName(sourcePath)}");
+            string assetPath;
 
-            File.Copy(sourcePath, assetPath, false);
+            if (ext == ".gltf")
+            {
+                // A text glTF drags a .bin buffer and external textures with it; copy the whole
+                // set into a dedicated folder so the importer can resolve them inside the project.
+                assetPath = CopyGltfIntoProject(sourcePath, targetFolder);
+            }
+            else
+            {
+                assetPath = AssetDatabase.GenerateUniqueAssetPath(
+                    $"{targetFolder}/{Path.GetFileName(sourcePath)}");
+                File.Copy(sourcePath, assetPath, false);
+            }
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
             // Push the window's settings onto the new asset's importer, then reimport once.
@@ -347,6 +357,44 @@ namespace CADImporter.Editor
                           "CAD Importer settings do not apply. Use the asset's own import settings.");
             }
             return assetPath;
+        }
+
+        /// <summary>
+        /// Copies a text glTF and its external buffers/images into a dedicated folder under
+        /// <paramref name="targetFolder"/>, preserving the relative paths the .gltf references
+        /// so they resolve in-project. Returns the copied .gltf asset path.
+        /// </summary>
+        public static string CopyGltfIntoProject(string sourcePath, string targetFolder)
+        {
+            string name = Path.GetFileNameWithoutExtension(sourcePath);
+            string leaf = Path.GetFileName(AssetDatabase.GenerateUniqueAssetPath($"{targetFolder}/{name}"));
+            AssetDatabase.CreateFolder(targetFolder, leaf); // registered asset folder
+            string folder = $"{targetFolder}/{leaf}";
+
+            string dest = $"{folder}/{Path.GetFileName(sourcePath)}";
+            File.Copy(sourcePath, dest, false);
+
+            string srcDir = Path.GetDirectoryName(sourcePath) ?? "";
+            foreach (string uri in GltfParser.GetExternalResources(sourcePath))
+            {
+                try
+                {
+                    string from = Path.GetFullPath(Path.Combine(srcDir, uri));
+                    string to = Path.GetFullPath(Path.Combine(folder, uri));
+                    if (!File.Exists(from))
+                    {
+                        Debug.LogWarning($"CAD Importer: glTF dependency missing next to source: {uri}");
+                        continue;
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(to));
+                    File.Copy(from, to, true);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"CAD Importer: could not copy glTF dependency '{uri}': {e.Message}");
+                }
+            }
+            return dest;
         }
 
         static void EnsureFolder(string folder)
