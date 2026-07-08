@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -17,6 +18,7 @@ namespace CADImporter.Editor
     {
         const string PrefsKey = "CADImporter.FreeCADPath";
         const string OkMarker = "CADIMPORTER_OK";
+        const string ProgressMarker = "CADIMPORTER_PROGRESS";
 
         public static string ConverterPath
         {
@@ -83,7 +85,8 @@ namespace CADImporter.Editor
         /// ("000_PartLabel.stl", ...) inside <paramref name="outputDir"/>.
         /// </summary>
         public static bool ConvertToStl(string converterExe, string sourceFile, string outputDir,
-            float linearDeflection, float angularDeflectionDeg, out string error)
+            float linearDeflection, float angularDeflectionDeg, int timeoutSeconds, string label,
+            out string error)
         {
             error = null;
             Directory.CreateDirectory(outputDir);
@@ -103,17 +106,41 @@ namespace CADImporter.Editor
                 using var process = Process.Start(psi);
                 var stdout = new StringBuilder();
                 var stderr = new StringBuilder();
-                process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
+                // FreeCAD emits ProgressMarker lines as it works; surface them live so a slow
+                // large-assembly conversion is visibly making progress rather than looking hung.
+                var progress = new ConcurrentQueue<string>();
+                process.OutputDataReceived += (_, e) =>
+                {
+                    if (e.Data == null) return;
+                    stdout.AppendLine(e.Data);
+                    int i = e.Data.IndexOf(ProgressMarker, StringComparison.Ordinal);
+                    if (i >= 0) progress.Enqueue(e.Data.Substring(i + ProgressMarker.Length).Trim());
+                };
                 process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                if (!process.WaitForExit(300000))
+                // Poll instead of one blocking wait, so we can drain progress and honour a
+                // configurable (optionally unlimited) timeout. timeoutSeconds <= 0 means no limit.
+                string prefix = string.IsNullOrEmpty(label) ? "" : label + ": ";
+                var sw = Stopwatch.StartNew();
+                long budgetMs = timeoutSeconds <= 0 ? long.MaxValue : (long)timeoutSeconds * 1000;
+                while (!process.WaitForExit(250))
                 {
-                    try { process.Kill(); } catch { }
-                    error = "FreeCAD conversion timed out after 5 minutes.";
-                    return false;
+                    while (progress.TryDequeue(out var msg))
+                        UnityEngine.Debug.Log($"CAD Importer: {prefix}{msg}");
+                    if (sw.ElapsedMilliseconds >= budgetMs)
+                    {
+                        try { process.Kill(); } catch { }
+                        error = $"FreeCAD conversion timed out after {timeoutSeconds} seconds. " +
+                                "Large assemblies can legitimately take longer — raise " +
+                                "\"Step Timeout Seconds\" in the import settings (0 = no limit).";
+                        return false;
+                    }
                 }
+                process.WaitForExit(); // let the async output readers flush
+                while (progress.TryDequeue(out var msg))
+                    UnityEngine.Debug.Log($"CAD Importer: {prefix}{msg}");
 
                 if (!stdout.ToString().Contains(OkMarker))
                 {
@@ -156,6 +183,10 @@ SRC = r'''{src}'''
 OUT = r'''{outDir}'''
 LIN = {lin}
 ANG = {ang}
+
+def prog(msg):
+    # Surfaced live in the Unity Console by StepConverter; keep messages terse.
+    print('{ProgressMarker} ' + msg, flush=True)
 
 def sanitize(label):
     out = ''.join(ch if (ch.isalnum() or ch in '-_ .') else '_' for ch in label)
@@ -239,17 +270,22 @@ try:
     try:
         import Import
         doc = FreeCAD.newDocument('cadimport')
+        prog('loading B-rep (large files can take a few minutes)...')
         Import.insert(SRC, doc.Name)
+        prog('loaded; walking assembly tree...')
         items = collect(doc)
     except Exception:
         items = []
     if not items:
+        prog('reading solids directly...')
         shape = Part.Shape()
         shape.read(SRC)
         solids = shape.Solids if shape.Solids else [shape]
         base = os.path.splitext(os.path.basename(SRC))[0]
         items = [(base + ('_' + str(i) if len(solids) > 1 else ''), s) for i, s in enumerate(solids)]
 
+    total = len(items)
+    prog('tessellating %d part(s)...' % total)
     count = 0
     for label, shape in items:
         try:
@@ -260,7 +296,10 @@ try:
             count += 1
         except Exception:
             traceback.print_exc()
+        if count % 25 == 0 and count > 0:
+            prog('tessellated %d/%d part(s)...' % (count, total))
 
+    prog('done: %d part(s)' % count)
     print('{OkMarker} %d' % count)
 except Exception:
     traceback.print_exc()

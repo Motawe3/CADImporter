@@ -118,6 +118,9 @@ com.motawea.cad-importer/
 
 - STEP/IGES tessellation quality is controlled by the deflection settings (linear is
   relative to shape size). Finer deflection = more triangles.
+- Large STEP/IGES assemblies (100+ MB, hundreds of parts) can take several minutes to
+  convert; progress is logged to the Console. If conversion times out, raise **Step
+  Timeout Seconds** in the import settings (0 = no limit).
 - Decimated LODs drop vertex colors/UVs (CAD parts rarely have them); normals are recomputed.
 - Runtime import in player builds: make sure the URP Lit shader is included (reference it
   in a scene or add it to *Project Settings → Graphics → Always Included Shaders*), or pass

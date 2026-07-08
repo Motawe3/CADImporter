@@ -4,6 +4,19 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-08
+
+### Added
+- STEP/IGES conversion timeout is now configurable (**Step Timeout Seconds** import
+  setting, default 900, 0 = no limit). Large assemblies (100+ MB, hundreds of parts)
+  that legitimately need more than the old fixed 5-minute limit now import successfully.
+- Conversion progress is logged to the Console during STEP/IGES import, so a slow job on
+  a big assembly is visibly making progress instead of looking hung.
+
+### Fixed
+- STEP assembly import: missing parts, wrong placements, and duplicate names caused by
+  reading `.Shape` off the flat document object list instead of walking the assembly tree.
+
 ## [1.0.0] - 2026-07-06
 
 ### Added

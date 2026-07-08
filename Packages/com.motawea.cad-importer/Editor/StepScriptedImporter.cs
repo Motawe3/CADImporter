@@ -37,7 +37,8 @@ namespace CADImporter.Editor
             {
                 string src = Path.GetFullPath(ctx.assetPath);
                 if (!StepConverter.ConvertToStl(converter, src, tempDir,
-                        s.stepLinearDeflection, s.stepAngularDeflection, out string error))
+                        s.stepLinearDeflection, s.stepAngularDeflection, s.stepTimeoutSeconds,
+                        Path.GetFileName(ctx.assetPath), out string error))
                 {
                     ctx.LogImportError($"CAD Importer: STEP conversion of '{ctx.assetPath}' failed. {error}");
                     CADAssetBuilder.BuildPlaceholder(ctx, name);
