@@ -4,6 +4,41 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-09
+
+### Added
+- **IFC (BIM) import (.ifc)** — editor drag & drop / batch window. Tessellated through the
+  IfcOpenShell library bundled with FreeCAD (the same install the STEP/IGES importer uses), so
+  no extra dependency is needed. Built for realtime rendering of building models:
+  - **Spatial hierarchy preserved**: project → site → building → storey → element (and
+    aggregated sub-parts) each becomes a nested GameObject with its own local pivot, so a
+    building imports as a navigable tree rather than a flat mesh soup.
+  - **Per-element surface colours** are read from IFC styles and deduplicated into a small set
+    of shared materials (fewer materials → effective static batching); translucent styles
+    (e.g. glazing) import as blended materials.
+  - **Professional "colour by material / category" palette** for elements with no authored
+    style — the muted, desaturated scheme modern BIM viewers default to. Each element is
+    coloured first by its associated **IFC material** (so **glass/glazing imports automatically
+    translucent**, steel gets a metallic finish, timber becomes wood — on any element type, e.g.
+    a glazed `IfcWall` or curtain-wall plate), then by **IFC type** (plaster walls, concrete
+    slabs, steel structure, wood doors, charcoal roofs, translucent windows, teal/tan MEP).
+    "Glass wool"/"glass fibre" insulation is correctly kept opaque. Authored file colours still
+    win when present.
+  - Geometry is normalised to metres and Z-up right-handed, then flows through the same
+    pipeline as every other format (welding, LODs, simplified colliders, static batching).
+  - Tessellation detail is configurable (**IFC Linear Deflection**); the shared conversion
+    timeout and Console progress logging apply to IFC too.
+
+### Changed
+- **Determinate import progress bar for every format.** Imports now show a real progress bar
+  with a calculated part count instead of only an elapsed-time spinner, so long jobs don't look
+  stuck:
+  - STEP/IGES/IFC conversion reports "part *i* of *N*" (the converter pre-counts the assembly's
+    leaf parts, and IFC uses IfcOpenShell's own tessellation percentage), and the bar keeps a
+    ticking elapsed clock during the opaque B-rep load so it never looks frozen.
+  - The shared build stage (geometry processing, then meshing / LOD / collider generation per
+    part) reports determinate progress for **all** formats — STL, PLY, glTF/GLB, STEP/IGES, IFC.
+
 ## [1.3.1] - 2026-07-09
 
 ### Changed

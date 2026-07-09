@@ -11,15 +11,31 @@ namespace CADImporter
     /// </summary>
     public static class MeshProcessor
     {
-        public static void Process(CADModel model, in CADProcessOptions options)
+        /// <summary>
+        /// Processes every mesh in the model. <paramref name="onProgress"/>, when supplied, is
+        /// invoked with a 0..1 fraction as each mesh completes, so a long import (large STEP/IFC
+        /// assemblies) can drive a determinate progress bar instead of looking hung.
+        /// </summary>
+        public static void Process(CADModel model, in CADProcessOptions options,
+            Action<float> onProgress = null)
         {
+            int total = 0;
+            if (onProgress != null)
+                foreach (var node in model.EnumerateNodes())
+                    if (Processable(node.Mesh)) total++;
+
+            int done = 0;
             foreach (var node in model.EnumerateNodes())
             {
                 var m = node.Mesh;
-                if (m?.Positions == null || m.Positions.Length == 0 || m.Submeshes == null) continue;
+                if (!Processable(m)) continue;
                 ProcessMesh(m, options);
+                if (onProgress != null && total > 0) onProgress((float)++done / total);
             }
         }
+
+        static bool Processable(CADMeshData m) =>
+            m?.Positions != null && m.Positions.Length > 0 && m.Submeshes != null;
 
         public static void ProcessMesh(CADMeshData mesh, in CADProcessOptions o)
         {

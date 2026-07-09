@@ -71,6 +71,121 @@ namespace CADImporter.Tests
 
         // --- STL ---------------------------------------------------------------------------
 
+        // --- IFC colour palette (per-element BIM colours -> shared, deduped materials) ---
+
+        [Test]
+        public void ColorPalette_DedupesIdenticalColorsIntoOneMaterial()
+        {
+            var model = new CADModel { Name = "bld" };
+            var seen = new HashSet<string>();
+            var grey = new Color(0.8f, 0.8f, 0.82f, 1f);
+
+            string a = CadColorPalette.GetOrAdd(model, seen, grey);
+            string b = CadColorPalette.GetOrAdd(model, seen, grey);          // same colour again
+            string c = CadColorPalette.GetOrAdd(model, seen, new Color(0.75f, 0.2f, 0.18f, 1f)); // red
+
+            Assert.AreEqual(a, b, "identical colours share one material key");
+            Assert.AreNotEqual(a, c, "different colours get different keys");
+            Assert.AreEqual(2, model.Materials.Count, "only two distinct materials created");
+        }
+
+        [Test]
+        public void ColorPalette_QuantizesNearIdenticalColors()
+        {
+            // Colours within one 8-bit quantisation step collapse to the same material.
+            var model = new CADModel { Name = "bld" };
+            var seen = new HashSet<string>();
+            CadColorPalette.GetOrAdd(model, seen, new Color(0.5000f, 0.5f, 0.5f, 1f));
+            CadColorPalette.GetOrAdd(model, seen, new Color(0.5010f, 0.5f, 0.5f, 1f));
+            Assert.AreEqual(1, model.Materials.Count);
+        }
+
+        [Test]
+        public void ColorPalette_TranslucentColorBecomesBlend()
+        {
+            var model = new CADModel { Name = "bld" };
+            var seen = new HashSet<string>();
+            CadColorPalette.GetOrAdd(model, seen, new Color(0.35f, 0.55f, 0.85f, 0.4f)); // glass
+            CadColorPalette.GetOrAdd(model, seen, new Color(0.8f, 0.8f, 0.8f, 1f));      // opaque
+
+            var glass = model.Materials.Find(m => m.Color.a < 0.95f);
+            var wall = model.Materials.Find(m => m.Color.a >= 0.95f);
+            Assert.IsNotNull(glass);
+            Assert.AreEqual(CADAlphaMode.Blend, glass.AlphaMode, "translucent -> blend");
+            Assert.IsNotNull(wall);
+            Assert.AreEqual(CADAlphaMode.Opaque, wall.AlphaMode, "opaque stays opaque");
+        }
+
+        // --- IFC professional "colour by category" palette ---
+
+        [Test]
+        public void IfcPalette_DistinctFinishesPerCategory()
+        {
+            var wall = IfcMaterialPalette.ForType("IfcWall");
+            var slab = IfcMaterialPalette.ForType("IfcSlab");
+            var column = IfcMaterialPalette.ForType("IfcColumn");
+            var roof = IfcMaterialPalette.ForType("IfcRoof");
+
+            // Plaster reads light; concrete mid; charcoal dark — a clear value hierarchy.
+            Assert.Greater(wall.Color.grayscale, slab.Color.grayscale, "wall lighter than slab");
+            Assert.Greater(slab.Color.grayscale, roof.Color.grayscale, "slab lighter than roof");
+            Assert.Greater(column.Metallic, 0.3f, "steel column is metallic");
+            Assert.Less(wall.Metallic, 0.1f, "plaster wall is non-metallic");
+        }
+
+        [Test]
+        public void IfcPalette_GlazingIsTranslucentAndSmooth()
+        {
+            var window = IfcMaterialPalette.ForType("IfcWindow");
+            Assert.Less(window.Color.a, 0.5f, "glazing is translucent");
+            Assert.Greater(window.Smoothness, 0.7f, "glazing is smooth/reflective");
+        }
+
+        [Test]
+        public void IfcPalette_MaterialDrivesFinishOverType()
+        {
+            // A glazed wall (generic IfcWall type) is detected as glass from its material and made
+            // translucent; a timber-clad wall becomes wood — material wins over type.
+            var glassWall = IfcMaterialPalette.ForElement("IfcWall", "glass glazing");
+            Assert.Less(glassWall.Color.a, 0.5f, "glass-material wall is translucent");
+            Assert.Greater(glassWall.Smoothness, 0.7f, "glass-material wall is smooth");
+
+            var timberWall = IfcMaterialPalette.ForElement("IfcWall", "timber wood");
+            Assert.AreEqual(IfcMaterialPalette.ForType("IfcDoor").Color, timberWall.Color,
+                "timber wall shares the wood finish");
+
+            var steelBeam = IfcMaterialPalette.ForElement("IfcBeam", "structural steel");
+            Assert.Greater(steelBeam.Metallic, 0.3f, "steel material is metallic");
+
+            // No material hint -> fall back to the type palette.
+            Assert.AreEqual(IfcMaterialPalette.ForType("IfcWall").Color,
+                            IfcMaterialPalette.ForElement("IfcWall", null).Color);
+        }
+
+        [Test]
+        public void IfcPalette_GlassWoolIsInsulationNotGlazing()
+        {
+            // "Glass wool" / "glass fibre" is insulation — it must NOT be treated as transparent glass.
+            var wool = IfcMaterialPalette.ForElement("IfcCovering", "glass wool insulation");
+            Assert.AreEqual(1f, wool.Color.a, "glass wool is opaque insulation, not glazing");
+            var fibre = IfcMaterialPalette.ForElement("IfcSlab", "glass fibre");
+            Assert.AreEqual(1f, fibre.Color.a, "glass fibre is opaque");
+        }
+
+        [Test]
+        public void IfcPalette_TypeVariantsAndUnknownFallToSensibleDefaults()
+        {
+            // Standard-case wall shares the wall finish.
+            Assert.AreEqual(IfcMaterialPalette.ForType("IfcWall").Color,
+                            IfcMaterialPalette.ForType("IfcWallStandardCase").Color);
+            // MEP heuristics.
+            var pipe = IfcMaterialPalette.ForType("IfcPipeSegment");
+            Assert.AreNotEqual(IfcMaterialPalette.Default.Color, pipe.Color, "pipes get their own colour");
+            // Unknown / null -> neutral default.
+            Assert.AreEqual(IfcMaterialPalette.Default.Color, IfcMaterialPalette.ForType("IfcMystery").Color);
+            Assert.AreEqual(IfcMaterialPalette.Default.Color, IfcMaterialPalette.ForType(null).Color);
+        }
+
         [Test]
         public void StlBinary_ParsesCube()
         {

@@ -85,6 +85,7 @@ namespace CADImporter.Editor
             }
             finally
             {
+                UnityEditor.EditorUtility.ClearProgressBar();
                 try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
             }
         }

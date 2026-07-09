@@ -26,7 +26,7 @@ namespace CADImporter.Editor
         const string FolderPrefsKey = "CADImporter.TargetFolder";
 
         static readonly string[] SupportedExtensions =
-            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb" };
+            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb", ".ifc" };
 
         readonly List<string> files = new List<string>();
         SettingsHolder holder;
@@ -99,7 +99,7 @@ namespace CADImporter.Editor
 
             var dropRect = GUILayoutUtility.GetRect(0, 48, GUILayout.ExpandWidth(true));
             GUI.Box(dropRect, files.Count == 0
-                ? "Drop CAD files here (STL, PLY, OBJ, STEP, IGES)"
+                ? "Drop CAD files here (STL, PLY, OBJ, glTF, GLB, STEP, IGES, IFC)"
                 : $"{files.Count} file(s) queued — drop more to add", EditorStyles.helpBox);
             HandleDragAndDrop(dropRect);
 
@@ -117,7 +117,7 @@ namespace CADImporter.Editor
             if (GUILayout.Button("Add Files…"))
             {
                 string picked = EditorUtility.OpenFilePanel("Select CAD file",
-                    "", "stl,ply,obj,step,stp,iges,igs,gltf,glb");
+                    "", "stl,ply,obj,step,stp,iges,igs,gltf,glb,ifc");
                 if (!string.IsNullOrEmpty(picked) && !files.Contains(picked))
                     files.Add(picked);
             }
@@ -183,7 +183,7 @@ namespace CADImporter.Editor
 
         void DrawStepConverterStatus()
         {
-            EditorGUILayout.LabelField("STEP / IGES Converter", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("STEP / IGES / IFC Converter (FreeCAD)", EditorStyles.boldLabel);
             string path = StepConverter.ConverterPath;
             bool valid = !string.IsNullOrEmpty(path) && File.Exists(path);
 
@@ -194,9 +194,14 @@ namespace CADImporter.Editor
             else
             {
                 EditorGUILayout.HelpBox(
-                    "FreeCAD not configured. STL/PLY/OBJ import works without it; STEP and IGES " +
-                    "files need FreeCAD's Open CASCADE kernel for tessellation (free, freecad.org).",
+                    "FreeCAD not configured. STL, PLY, OBJ and glTF/GLB import work without it; " +
+                    "STEP, IGES and IFC files need FreeCAD (Open CASCADE + the bundled IfcOpenShell) " +
+                    "for tessellation (free, freecad.org).",
                     MessageType.Warning);
+
+                // Only shown while FreeCAD is missing: a shortcut to grab it.
+                if (GUILayout.Button("Download FreeCAD…"))
+                    Application.OpenURL("https://www.freecad.org/downloads.php");
             }
 
             EditorGUILayout.BeginHorizontal();
@@ -341,6 +346,14 @@ namespace CADImporter.Editor
                     gs.sourceUnit = SourceUnit.Meters;
                     gs.sourceOrientation = SourceOrientation.YUpRightHanded;
                     gltf.settings = gs;
+                    break;
+                case IfcScriptedImporter ifc:
+                    // IFC is always emitted in metres, Z-up right-handed by the converter; keep those
+                    // fixed regardless of the window's shared (millimetre) CAD defaults.
+                    var ifcs = holder.settings.Clone();
+                    ifcs.sourceUnit = SourceUnit.Meters;
+                    ifcs.sourceOrientation = SourceOrientation.ZUpRightHanded;
+                    ifc.settings = ifcs;
                     break;
                 default:
                     applied = false; // e.g. OBJ → Unity's native model importer

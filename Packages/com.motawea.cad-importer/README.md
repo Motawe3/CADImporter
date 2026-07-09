@@ -29,6 +29,7 @@ Or add it to `Packages/manifest.json` directly:
 | OBJ | Unity native importer | ✔ | Runtime path supports groups, materials, negative indices |
 | glTF 2.0 / GLB | ✔ drag & drop | ✔ | Node hierarchy **with pivots preserved** (robot rigs / joints), metallic-roughness PBR + textures, embedded/external/base64 buffers. No Draco/meshopt/KTX2 |
 | STEP / IGES | ✔ via FreeCAD | – | Assembly **hierarchy with pivots preserved** (sub-assemblies / joints), parts and labels; requires [FreeCAD](https://www.freecad.org) |
+| IFC (BIM) | ✔ via FreeCAD | – | Spatial **hierarchy with pivots preserved** (site / building / storey / element), authored surface colours or a professional **colour-by-category** palette, deduplicated into shared materials; requires [FreeCAD](https://www.freecad.org) (bundles IfcOpenShell) |
 
 ## Quick start
 
@@ -36,9 +37,9 @@ Or add it to `Packages/manifest.json` directly:
    prefab with LODs, colliders and materials. Select the asset to tweak import settings.
 2. **Batch import**: `Tools → CAD Importer` — queue external files, tune settings once,
    import into a target folder, optionally place instances in the open scene.
-3. **STEP/IGES**: install FreeCAD (free). The importer auto-detects `FreeCADCmd.exe`; if it
-   doesn't, set the path in `Tools → CAD Importer`. Each solid in the assembly becomes a
-   named child GameObject.
+3. **STEP/IGES/IFC**: install FreeCAD (free). The importer auto-detects `FreeCADCmd.exe`; if
+   it doesn't, set the path in `Tools → CAD Importer`. STEP/IGES parts and IFC building
+   elements each become a named child GameObject, nested by assembly / spatial structure.
 4. **Runtime (digital twins)** — import the **CAD Importer Demo** sample from the Package
    Manager (requires URP) for a ready-made scene, or just add the `DemoCadRuntimeImporter`
    component to any GameObject and press Play:
@@ -131,6 +132,15 @@ com.motawea.cad-importer/
   KTX2/basisu compression are not decoded — re-export without them. glTF materials become
   URP Lit (metallic-roughness); occlusion and metallic-roughness maps are channel-repacked
   to Unity's layout.
+- IFC import uses the IfcOpenShell library bundled with FreeCAD, so it needs the same FreeCAD
+  install as STEP/IGES (no separate dependency). One representative surface colour is taken
+  per element (multi-material elements collapse to their dominant colour). Elements without an
+  authored style are coloured by their IFC **material** first (glass/glazing → automatically
+  translucent, steel → metallic, timber → wood, on any element type) and then by IFC **category**
+  (walls, slabs, structure, doors, MEP…), so unstyled models still read clearly. Openings/voids
+  are applied to their host geometry. Detail is set by **IFC Linear Deflection** (metres); on
+  very large models, preserving one GameObject per element trades draw calls for a navigable
+  tree — enable **Mark Static** (on by default for IFC) so Unity can batch them.
 
 ## License
 

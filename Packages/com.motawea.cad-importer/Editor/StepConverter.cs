@@ -17,8 +17,8 @@ namespace CADImporter.Editor
     public static class StepConverter
     {
         const string PrefsKey = "CADImporter.FreeCADPath";
-        const string OkMarker = "CADIMPORTER_OK";
-        const string ProgressMarker = "CADIMPORTER_PROGRESS";
+        internal const string OkMarker = "CADIMPORTER_OK";
+        internal const string ProgressMarker = "CADIMPORTER_PROGRESS";
 
         public static string ConverterPath
         {
@@ -93,6 +93,29 @@ namespace CADImporter.Editor
             string scriptPath = Path.Combine(outputDir, "_convert.py");
             File.WriteAllText(scriptPath, BuildScript(sourceFile, outputDir, linearDeflection, angularDeflectionDeg));
 
+            if (!RunFreeCadScript(converterExe, scriptPath, timeoutSeconds, label, out _, out error))
+                return false;
+
+            if (Directory.GetFiles(outputDir, "*.stl").Length == 0)
+            {
+                error = "FreeCAD reported success but produced no STL files (empty model?).";
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="scriptPath"/> through a headless FreeCAD (<paramref name="converterExe"/>),
+        /// forwarding <c>CADIMPORTER_PROGRESS</c> lines to the Unity Console and honouring a configurable
+        /// (optionally unlimited) timeout. Returns true only when the script prints <c>CADIMPORTER_OK</c>.
+        /// Shared by the STEP/IGES and IFC converters (both drive FreeCAD's bundled Python).
+        /// </summary>
+        internal static bool RunFreeCadScript(string converterExe, string scriptPath, int timeoutSeconds,
+            string label, out string stdout, out string error)
+        {
+            error = null;
+            stdout = null;
+
             var psi = new ProcessStartInfo(converterExe, $"\"{scriptPath}\"")
             {
                 UseShellExecute = false,
@@ -104,7 +127,7 @@ namespace CADImporter.Editor
             try
             {
                 using var process = Process.Start(psi);
-                var stdout = new StringBuilder();
+                var outBuf = new StringBuilder();
                 var stderr = new StringBuilder();
                 // FreeCAD emits ProgressMarker lines as it works; surface them live so a slow
                 // large-assembly conversion is visibly making progress rather than looking hung.
@@ -112,7 +135,7 @@ namespace CADImporter.Editor
                 process.OutputDataReceived += (_, e) =>
                 {
                     if (e.Data == null) return;
-                    stdout.AppendLine(e.Data);
+                    outBuf.AppendLine(e.Data);
                     int i = e.Data.IndexOf(ProgressMarker, StringComparison.Ordinal);
                     if (i >= 0) progress.Enqueue(e.Data.Substring(i + ProgressMarker.Length).Trim());
                 };
@@ -123,34 +146,42 @@ namespace CADImporter.Editor
                 // Poll instead of one blocking wait, so we can drain progress and honour a
                 // configurable (optionally unlimited) timeout. timeoutSeconds <= 0 means no limit.
                 string prefix = string.IsNullOrEmpty(label) ? "" : label + ": ";
+                string title = $"CAD Importer — {label}";
+                float frac = 0f;
+                string phase = "starting…";
                 var sw = Stopwatch.StartNew();
                 long budgetMs = timeoutSeconds <= 0 ? long.MaxValue : (long)timeoutSeconds * 1000;
                 while (!process.WaitForExit(250))
                 {
-                    while (progress.TryDequeue(out var msg))
-                        UnityEngine.Debug.Log($"CAD Importer: {prefix}{msg}");
+                    while (progress.TryDequeue(out var raw))
+                    {
+                        ParseProgress(raw, ref frac, out phase);
+                        UnityEngine.Debug.Log($"CAD Importer: {prefix}{phase}");
+                    }
+                    // Refresh every poll (even with no new line) so the elapsed clock keeps
+                    // ticking — a multi-minute B-rep load never looks frozen.
+                    EditorUtility.DisplayProgressBar(title,
+                        $"{phase}   ({FormatElapsed(sw.Elapsed)})", UnityEngine.Mathf.Clamp01(frac));
                     if (sw.ElapsedMilliseconds >= budgetMs)
                     {
                         try { process.Kill(); } catch { }
                         error = $"FreeCAD conversion timed out after {timeoutSeconds} seconds. " +
-                                "Large assemblies can legitimately take longer — raise " +
+                                "Large models can legitimately take longer — raise " +
                                 "\"Step Timeout Seconds\" in the import settings (0 = no limit).";
                         return false;
                     }
                 }
                 process.WaitForExit(); // let the async output readers flush
-                while (progress.TryDequeue(out var msg))
-                    UnityEngine.Debug.Log($"CAD Importer: {prefix}{msg}");
-
-                if (!stdout.ToString().Contains(OkMarker))
+                while (progress.TryDequeue(out var raw))
                 {
-                    error = $"FreeCAD conversion failed.\nstdout: {Tail(stdout.ToString())}\nstderr: {Tail(stderr.ToString())}";
-                    return false;
+                    ParseProgress(raw, ref frac, out phase);
+                    UnityEngine.Debug.Log($"CAD Importer: {prefix}{phase}");
                 }
 
-                if (Directory.GetFiles(outputDir, "*.stl").Length == 0)
+                stdout = outBuf.ToString();
+                if (!stdout.Contains(OkMarker))
                 {
-                    error = "FreeCAD reported success but produced no STL files (empty model?).";
+                    error = $"FreeCAD conversion failed.\nstdout: {Tail(stdout)}\nstderr: {Tail(stderr.ToString())}";
                     return false;
                 }
                 return true;
@@ -164,6 +195,26 @@ namespace CADImporter.Editor
 
         static string Tail(string s, int max = 2000) =>
             s.Length <= max ? s : "..." + s.Substring(s.Length - max);
+
+        /// <summary>
+        /// Parses a script progress line of the form "&lt;frac&gt; &lt;message&gt;". A fraction in
+        /// [0,1] advances the bar; a negative fraction (indeterminate step) leaves it unchanged.
+        /// Lines with no leading number are treated as plain messages.
+        /// </summary>
+        static void ParseProgress(string raw, ref float frac, out string message)
+        {
+            message = raw;
+            int sp = raw.IndexOf(' ');
+            if (sp > 0 && float.TryParse(raw.Substring(0, sp), System.Globalization.NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out float f))
+            {
+                if (f >= 0f) frac = f;
+                message = raw.Substring(sp + 1);
+            }
+        }
+
+        static string FormatElapsed(TimeSpan t) =>
+            t.TotalMinutes >= 1 ? $"{(int)t.TotalMinutes}m {t.Seconds:00}s" : $"{t.Seconds}s";
 
         static string BuildScript(string src, string outDir, float linDef, float angDefDeg)
         {
@@ -184,9 +235,11 @@ OUT = r'''{outDir}'''
 LIN = {lin}
 ANG = {ang}
 
-def prog(msg):
-    # Surfaced live in the Unity Console by StepConverter; keep messages terse.
-    print('{ProgressMarker} ' + msg, flush=True)
+TOTAL = 0  # total tessellatable leaf parts, filled in after the B-rep loads
+
+def prog(frac, msg):
+    # Surfaced live in the Unity Console + progress bar by StepConverter; keep messages terse.
+    print('{ProgressMarker} %.4f %s' % (frac, msg), flush=True)
 
 def sanitize(label):
     out = ''.join(ch if (ch.isalnum() or ch in '-_ .') else '_' for ch in label)
@@ -221,6 +274,29 @@ def placement_of(pl):
     return [b.x, b.y, b.z], [q[0], q[1], q[2], q[3]]
 
 SKIP_TYPES = ('App::Line', 'App::Plane', 'App::Point', 'App::Annotation')
+
+def count_parts(obj):
+    # Mirror build_tree's traversal but only count tessellatable leaves (no meshing),
+    # so the importer can show a determinate 'part i of N' progress bar.
+    r = resolved(obj)
+    tid = r.TypeId
+    if tid.startswith('App::Origin') or tid in SKIP_TYPES:
+        return 0
+    try:
+        subs = obj.getSubObjects()
+    except Exception:
+        subs = ()
+    if subs:
+        n = 0
+        for s in subs:
+            try:
+                child = obj.getSubObject(s, retType=1)
+            except Exception:
+                child = None
+            if child is not None:
+                n += count_parts(child)
+        return n
+    return 1 if has_shape(r) else 0
 
 def build_tree(obj, counter):
     # Preserve the assembly tree: each object becomes a node carrying its LOCAL placement.
@@ -263,8 +339,9 @@ def build_tree(obj, counter):
         idx = counter[0]
         m.write(os.path.join(OUT, '%03d.stl' % idx))
         counter[0] += 1
-        if counter[0] % 25 == 0:
-            prog('tessellated %d part(s)...' % counter[0])
+        if counter[0] % 10 == 0:
+            prog(0.1 + 0.85 * (counter[0] / max(TOTAL, 1)),
+                 'tessellated %d/%d part(s)...' % (counter[0], TOTAL))
         return {{'name': name, 'pos': pos, 'quat': quat, 'mesh': idx, 'children': []}}
     return None
 
@@ -282,9 +359,13 @@ try:
     try:
         import Import
         doc = FreeCAD.newDocument('cadimport')
-        prog('loading B-rep (large files can take a few minutes)...')
+        prog(0.02, 'loading B-rep (large files can take a few minutes)...')
         Import.insert(SRC, doc.Name)
-        prog('loaded; walking assembly tree...')
+        prog(0.06, 'loaded; counting parts...')
+        TOTAL = 0
+        for ro in doc.RootObjects:
+            TOTAL += count_parts(ro)
+        prog(0.1, 'walking assembly tree (%d part(s))...' % TOTAL)
         counter = [0]
         for ro in doc.RootObjects:
             n = build_tree(ro, counter)
@@ -310,7 +391,7 @@ try:
         roots = []
 
     if not used_tree:
-        prog('reading solids directly...')
+        prog(0.1, 'reading solids directly...')
         shape = Part.Shape()
         shape.read(SRC)
         solids = shape.Solids if shape.Solids else [shape]
@@ -323,6 +404,8 @@ try:
             idx = counter[0]
             m.write(os.path.join(OUT, '%03d.stl' % idx))
             counter[0] += 1
+            prog(0.1 + 0.85 * ((i + 1) / max(len(solids), 1)),
+                 'tessellated %d/%d solid(s)...' % (i + 1, len(solids)))
             nm = base + ('_' + str(i) if len(solids) > 1 else '')
             roots.append({{'name': nm, 'pos': [0, 0, 0], 'quat': [0, 0, 0, 1], 'mesh': idx, 'children': []}})
 
@@ -331,7 +414,7 @@ try:
         json.dump(manifest, mf)
 
     total = sum(count_leaves(n) for n in roots)
-    prog('done: %d part(s)' % total)
+    prog(1.0, 'done: %d part(s)' % total)
     print('{OkMarker} %d' % total)
 except Exception:
     traceback.print_exc()

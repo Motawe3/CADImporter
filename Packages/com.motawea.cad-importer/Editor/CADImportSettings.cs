@@ -82,10 +82,16 @@ namespace CADImporter.Editor
         public float stepLinearDeflection = 0.1f;
         [Tooltip("Tessellation angular tolerance in degrees. Lower = finer mesh."), Range(5f, 45f)]
         public float stepAngularDeflection = 20f;
-        [Tooltip("Give up on FreeCAD conversion after this many seconds. Large assemblies " +
-                 "(hundreds of parts / 100+ MB) can take several minutes. Set 0 for no limit. " +
-                 "Progress is logged to the Console so you can tell a slow job from a hung one.")]
+        [Tooltip("Give up on FreeCAD conversion (STEP/IGES/IFC) after this many seconds. Large " +
+                 "assemblies and buildings (hundreds of parts / 100+ MB) can take several minutes. " +
+                 "Set 0 for no limit. Progress is logged to the Console so you can tell a slow job " +
+                 "from a hung one.")]
         public int stepTimeoutSeconds = 900;
+
+        [Header("IFC / BIM (requires FreeCAD's IfcOpenShell)")]
+        [Tooltip("IFC tessellation chord tolerance in metres (absolute). Lower = finer curved " +
+                 "surfaces and more triangles. 0.01 (1 cm) suits most building models.")]
+        public float ifcLinearDeflection = 0.01f;
 
         public CADProcessOptions ToProcessOptions() => new CADProcessOptions
         {

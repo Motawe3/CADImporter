@@ -1,11 +1,12 @@
 {
   "name": "com.motawea.cad-importer",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "displayName": "CAD Importer",
-  "description": "Import CAD models (STL, PLY, OBJ, glTF/GLB, STEP, IGES) into Unity for robotics simulation and digital twins. Automatic unit and axis conversion, vertex welding, LOD generation, simplified physics colliders, metallic-roughness PBR materials, and an async runtime import API.",
+  "description": "Import CAD and BIM models (STL, PLY, OBJ, glTF/GLB, STEP, IGES, IFC) into Unity for robotics simulation and digital twins. Automatic unit and axis conversion, assembly hierarchy and pivot preservation, vertex welding, LOD generation, simplified physics colliders, metallic-roughness PBR materials, and an async runtime import API.",
   "unity": "6000.0",
   "keywords": [
     "cad",
+    "bim",
     "stl",
     "ply",
     "obj",
@@ -13,6 +14,7 @@
     "glb",
     "step",
     "iges",
+    "ifc",
     "robotics",
     "digital-twin",
     "importer",

@@ -3,10 +3,11 @@
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](Packages/com.motawea.cad-importer/LICENSE.md)
 
-Import CAD models — **STL, PLY, OBJ, STEP, IGES** — into Unity for **robotics simulation
-and digital twins**. Every import is automatically converted to meters and Y-up, welded,
-given smooth normals with crisp hard edges, a per-part **LOD chain**, and **simplified
-physics colliders**. A runtime async API loads CAD files in player builds without
+Import CAD & BIM models — **STL, PLY, OBJ, glTF/GLB, STEP, IGES, IFC** — into Unity for
+**robotics simulation and digital twins**. Every import is automatically converted to meters
+and Y-up, has its **assembly hierarchy and pivots preserved**, is welded, given smooth normals
+with crisp hard edges, a per-part **LOD chain**, **metallic-roughness PBR materials**, and
+**simplified physics colliders**. A runtime async API loads CAD files in player builds without
 hitching the simulation. Pure C#, no native plugins.
 
 ## Install
@@ -28,16 +29,24 @@ Pin a release with a tag: append `#v1.0.0`. Or add to `Packages/manifest.json`:
 ```
 
 Requires Unity **6000.0+**. URP recommended (falls back to Built-in/Standard).
-STEP/IGES import additionally needs a local [FreeCAD](https://www.freecad.org) install
-(free) — auto-detected, configurable under `Tools → CAD Importer`.
+STEP/IGES/IFC import additionally needs a local [FreeCAD](https://www.freecad.org) install
+(free; bundles the IfcOpenShell BIM kernel) — auto-detected, configurable under
+`Tools → CAD Importer`.
 
 ## Highlights
 
-- **Drag & drop** `.stl` / `.ply` / `.step` / `.iges` files — they import like any model,
-  producing a prefab with part hierarchy, LODGroups, colliders, materials and metadata.
-- **Batch window** (`Tools → CAD Importer`) for importing many external files at once.
-- **Assembly-aware STEP import** — each solid becomes a named child GameObject, so robot
-  links map cleanly to `ArticulationBody` / simulation logic.
+- **Drag & drop** `.stl` / `.ply` / `.gltf` / `.glb` / `.step` / `.iges` / `.ifc` files —
+  they import like any model, producing a prefab with part hierarchy, LODGroups, colliders,
+  materials and metadata.
+- **Batch window** (`Tools → CAD Importer`) for importing many external files at once, with a
+  determinate progress bar (part *i* of *N*) on long conversions.
+- **Hierarchy & pivots preserved** — STEP/IGES assemblies, glTF node rigs, and IFC spatial
+  structure import as nested GameObjects at their correct pivots (robot joints, building
+  storeys), so links map cleanly to `ArticulationBody` / simulation logic.
+- **glTF 2.0 / GLB** with full metallic-roughness PBR — base colour, metallic-roughness,
+  normal, occlusion and emissive maps, alpha modes and double-sided materials.
+- **IFC (BIM)** — spatial hierarchy plus a professional colour-by-material/category palette
+  (glass auto-translucent, steel metallic, concrete, timber, charcoal roofs, MEP…).
 - **Runtime import for digital twins**:
 
 ```csharp
@@ -62,8 +71,8 @@ GameObject model = await CADRuntimeImporter.ImportAsync(
 
 After installing, open `Window → Package Manager → CAD Importer → Samples` and import
 **CAD Importer Demo** (requires URP). Open `DemoRuntimeImporter.unity` and press Play —
-the on-screen panel imports any `.stl`/`.ply`/`.obj` file at runtime, or a generated
-sample part when the path is empty. Alternatively, add the `DemoCadRuntimeImporter`
+the on-screen panel imports any `.stl`/`.ply`/`.obj`/`.gltf`/`.glb` file at runtime, or a
+generated sample part when the path is empty. Alternatively, add the `DemoCadRuntimeImporter`
 component to any GameObject.
 
 ## Repository layout

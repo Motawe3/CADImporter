@@ -23,11 +23,16 @@ namespace CADImporter.Editor
             public float Scale;
             public int AssetId;
             public int TotalVertices, TotalTriangles, PartCount;
+            public string ProgressTitle;
+            public int TotalParts;
+            public int LastReportedPermille;
         }
 
         public static void Build(AssetImportContext ctx, CADModel model, CADImportSettings settings)
         {
-            MeshProcessor.Process(model, settings.ToProcessOptions());
+            int totalParts = 0;
+            foreach (var n in model.EnumerateNodes())
+                if (n.Mesh != null && n.Mesh.TriangleCount > 0) totalParts++;
 
             var c = new Context
             {
@@ -35,34 +40,59 @@ namespace CADImporter.Editor
                 Settings = settings,
                 Materials = new Dictionary<string, Material>(),
                 TexCache = new Dictionary<string, Texture2D>(),
-                Scale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale
+                Scale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale,
+                ProgressTitle = $"CAD Importer — {System.IO.Path.GetFileName(ctx.assetPath)}",
+                TotalParts = totalParts,
+                LastReportedPermille = -1
             };
 
-            bool vertexColorUnlit = settings.materialMode == MaterialMode.VertexColorUnlit;
-            c.DefaultMaterial = BuildMaterial(c, null, vertexColorUnlit, settings.defaultColor);
-            foreach (var m in model.Materials)
-                if (!string.IsNullOrEmpty(m.Name) && !c.Materials.ContainsKey(m.Name))
-                    c.Materials[m.Name] = BuildMaterial(c, m, vertexColorUnlit, settings.defaultColor);
+            try
+            {
+                // Processing (weld/normals) is the first ~40% of the build; part construction
+                // (meshing, LODs, colliders) the rest. Both drive a determinate bar so a large
+                // assembly shows real "part i of N" progress rather than an elapsed-time spinner.
+                MeshProcessor.Process(model, settings.ToProcessOptions(),
+                    f => Report(c, f * 0.4f, $"Processing geometry — {Mathf.RoundToInt(f * totalParts)}/{totalParts} parts"));
 
-            var root = new GameObject(model.Name);
-            foreach (var child in model.Root.Children)
-                BuildNode(c, child, root.transform);
+                bool vertexColorUnlit = settings.materialMode == MaterialMode.VertexColorUnlit;
+                c.DefaultMaterial = BuildMaterial(c, null, vertexColorUnlit, settings.defaultColor);
+                foreach (var m in model.Materials)
+                    if (!string.IsNullOrEmpty(m.Name) && !c.Materials.ContainsKey(m.Name))
+                        c.Materials[m.Name] = BuildMaterial(c, m, vertexColorUnlit, settings.defaultColor);
 
-            var info = root.AddComponent<CADModelInfo>();
-            info.sourceFile = System.IO.Path.GetFileName(ctx.assetPath);
-            info.sourceFormat = model.Format;
-            info.sourceUnit = settings.sourceUnit;
-            info.appliedScale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale;
-            info.totalVertices = c.TotalVertices;
-            info.totalTriangles = c.TotalTriangles;
-            info.partCount = c.PartCount;
-            info.importedAt = DateTime.UtcNow.ToString("u");
+                var root = new GameObject(model.Name);
+                foreach (var child in model.Root.Children)
+                    BuildNode(c, child, root.transform);
 
-            if (settings.markStatic)
-                SetStaticRecursively(root);
+                var info = root.AddComponent<CADModelInfo>();
+                info.sourceFile = System.IO.Path.GetFileName(ctx.assetPath);
+                info.sourceFormat = model.Format;
+                info.sourceUnit = settings.sourceUnit;
+                info.appliedScale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale;
+                info.totalVertices = c.TotalVertices;
+                info.totalTriangles = c.TotalTriangles;
+                info.partCount = c.PartCount;
+                info.importedAt = DateTime.UtcNow.ToString("u");
 
-            ctx.AddObjectToAsset("root", root);
-            ctx.SetMainObject(root);
+                if (settings.markStatic)
+                    SetStaticRecursively(root);
+
+                ctx.AddObjectToAsset("root", root);
+                ctx.SetMainObject(root);
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
+        /// <summary>Updates the import progress bar, throttled to 0.1% steps to avoid churn.</summary>
+        static void Report(Context c, float frac, string info)
+        {
+            int permille = Mathf.Clamp(Mathf.RoundToInt(frac * 1000f), 0, 1000);
+            if (permille == c.LastReportedPermille) return;
+            c.LastReportedPermille = permille;
+            EditorUtility.DisplayProgressBar(c.ProgressTitle, info, frac);
         }
 
         /// <summary>Creates a valid (empty) asset when import fails, so the error is visible in-project.</summary>
@@ -97,6 +127,8 @@ namespace CADImporter.Editor
             if (data != null && data.TriangleCount > 0)
             {
                 c.PartCount++;
+                Report(c, 0.4f + 0.6f * c.PartCount / Mathf.Max(1, c.TotalParts),
+                    $"Building part {c.PartCount}/{c.TotalParts}: {go.name}");
                 var s = c.Settings;
 
                 var mesh0 = UnityMeshBuilder.Build(data);
