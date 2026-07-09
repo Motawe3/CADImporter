@@ -2,15 +2,17 @@ using System;
 using System.IO;
 using System.Linq;
 using UnityEditor.AssetImporters;
+using UnityEngine;
 
 namespace CADImporter.Editor
 {
     /// <summary>
     /// Imports STEP/IGES B-rep files by tessellating them through a headless FreeCAD install
-    /// (auto-detected; configurable in Tools → CAD Importer). Each solid/part in the file
-    /// becomes a child GameObject, preserving assembly structure and part names.
+    /// (auto-detected; configurable in Tools → CAD Importer). The assembly tree is preserved:
+    /// each container/part becomes a child GameObject with its own local pivot, so sub-assembly
+    /// placements (e.g. robot joints) survive rather than being flattened to the origin.
     /// </summary>
-    [ScriptedImporter(3, new[] { "step", "stp", "iges", "igs" })]
+    [ScriptedImporter(4, new[] { "step", "stp", "iges", "igs" })]
     public class StepScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = new CADImportSettings();
@@ -46,14 +48,24 @@ namespace CADImporter.Editor
                 }
 
                 var model = new CADModel { Name = name, Format = FormatOf(ctx.assetPath), SourcePath = ctx.assetPath };
-                foreach (var stl in Directory.GetFiles(tempDir, "*.stl").OrderBy(f => f, StringComparer.Ordinal))
+                string manifestPath = Path.Combine(tempDir, "manifest.json");
+                if (File.Exists(manifestPath))
                 {
-                    var part = StlParser.Parse(stl);
-                    string partName = PartNameOf(stl);
-                    foreach (var child in part.Root.Children)
+                    var root = JNode.Parse(File.ReadAllText(manifestPath));
+                    foreach (var mn in root["nodes"].Items)
                     {
-                        child.Name = part.Root.Children.Count > 1 ? $"{partName}_{child.Name}" : partName;
-                        model.Root.Children.Add(child);
+                        var node = BuildStepNode(mn, tempDir, s.sourceOrientation);
+                        if (node != null) model.Root.Children.Add(node);
+                    }
+                }
+                else
+                {
+                    // Fallback (older converter output): flat, unnamed-index STL reassembly.
+                    foreach (var stl in Directory.GetFiles(tempDir, "*.stl").OrderBy(f => f, StringComparer.Ordinal))
+                    {
+                        var part = StlParser.Parse(stl);
+                        foreach (var child in part.Root.Children)
+                            model.Root.Children.Add(child);
                     }
                 }
 
@@ -89,11 +101,55 @@ namespace CADImporter.Editor
             }
         }
 
-        static string PartNameOf(string stlPath)
+        /// <summary>
+        /// Rebuilds a <see cref="CADNode"/> from a manifest node. The FreeCAD local placement is
+        /// Z-up right-handed (millimetres); it is converted to Unity with the same reflection the
+        /// mesh pipeline applies for <paramref name="orientation"/> (via
+        /// <see cref="MeshProcessor.ConvertPlacement"/>), so transforms and geometry always agree
+        /// regardless of the chosen orientation. Position is scaled with the geometry by the
+        /// builder. Returns null for empty branches.
+        /// </summary>
+        static CADNode BuildStepNode(JNode mn, string dir, SourceOrientation orientation)
         {
-            string name = Path.GetFileNameWithoutExtension(stlPath);
-            int underscore = name.IndexOf('_');
-            return underscore >= 0 && underscore < name.Length - 1 ? name.Substring(underscore + 1) : name;
+            var node = new CADNode { Name = mn["name"].AsString("Part") };
+
+            var pos = mn["pos"].AsFloatArray();
+            var quat = mn["quat"].AsFloatArray();
+            if (pos != null && pos.Length == 3 && quat != null && quat.Length == 4)
+            {
+                var p = new Vector3(pos[0], pos[1], pos[2]);
+                var r = new Quaternion(quat[0], quat[1], quat[2], quat[3]);
+                var sc = Vector3.one;
+                MeshProcessor.ConvertPlacement(orientation, ref p, ref r, ref sc);
+                node.LocalPosition = p;
+                node.LocalRotation = r;
+                node.LocalScale = sc;
+                node.HasLocalTransform = true;
+            }
+
+            int mesh = mn["mesh"].AsInt(-1);
+            if (mesh >= 0)
+            {
+                string stl = Path.Combine(dir, mesh.ToString("D3") + ".stl");
+                if (File.Exists(stl))
+                {
+                    var part = StlParser.Parse(stl);
+                    var kids = part.Root.Children;
+                    if (kids.Count == 1)
+                        node.Mesh = kids[0].Mesh;
+                    else
+                        foreach (var k in kids)
+                            node.Children.Add(new CADNode { Name = $"{node.Name}_{k.Name}", Mesh = k.Mesh });
+                }
+            }
+
+            foreach (var child in mn["children"].Items)
+            {
+                var cn = BuildStepNode(child, dir, orientation);
+                if (cn != null) node.Children.Add(cn);
+            }
+
+            return node.Mesh == null && node.Children.Count == 0 ? null : node;
         }
     }
 }

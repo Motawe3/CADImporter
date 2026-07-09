@@ -4,6 +4,17 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-09
+
+### Changed
+- **STEP/IGES assembly hierarchy and pivots are now preserved.** The FreeCAD converter emits
+  each part in its own local frame plus a manifest of the assembly tree with per-node
+  placements; the importer rebuilds a nested GameObject hierarchy with each part/sub-assembly
+  at its correct pivot, converting FreeCAD's Z-up right-handed placements to Unity. Previously
+  every part's placement was baked into its vertices and flattened to a single level at the
+  origin — sub-assembly structure (e.g. robot joints) is now retained. Verified against the
+  SO101 assembly (225 parts, depth 9) with world bounds matching the CAD source.
+
 ## [1.3.0] - 2026-07-09
 
 ### Changed

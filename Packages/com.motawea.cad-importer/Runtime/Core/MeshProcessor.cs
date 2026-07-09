@@ -97,6 +97,36 @@ namespace CADImporter
             }
         }
 
+        /// <summary>
+        /// Converts a node's local placement (position, rotation, scale) with the SAME axis
+        /// reflection <see cref="ApplyTransform"/> applies to vertices for the given orientation.
+        /// Keeping both in one place guarantees a preserved node hierarchy and its geometry stay
+        /// consistent — a mismatch flattens or explodes the assembly. Position is left in the
+        /// source unit (scaled with the geometry at build time).
+        /// </summary>
+        public static void ConvertPlacement(SourceOrientation orientation,
+            ref Vector3 position, ref Quaternion rotation, ref Vector3 scale)
+        {
+            switch (orientation)
+            {
+                case SourceOrientation.ZUpRightHanded:
+                    // Vertices map (x,y,z)->(x,z,y): swap Y/Z (a reflection). Conjugate the
+                    // placement by the same swap; the quaternion's y,z components negate too.
+                    position = new Vector3(position.x, position.z, position.y);
+                    rotation = new Quaternion(-rotation.x, -rotation.z, -rotation.y, rotation.w);
+                    scale = new Vector3(scale.x, scale.z, scale.y);
+                    break;
+
+                case SourceOrientation.YUpRightHanded:
+                    // Vertices map (x,y,z)->(-x,y,z): mirror X. Conjugate placement to match.
+                    position = new Vector3(-position.x, position.y, position.z);
+                    rotation = new Quaternion(rotation.x, -rotation.y, -rotation.z, rotation.w);
+                    break;
+
+                // YUpLeftHanded: already Unity's convention, no change.
+            }
+        }
+
         // --- smooth normals ------------------------------------------------------------------
 
         readonly struct QKey : IEquatable<QKey>

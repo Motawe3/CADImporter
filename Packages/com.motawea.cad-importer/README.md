@@ -28,7 +28,7 @@ Or add it to `Packages/manifest.json` directly:
 | PLY (ascii / binary LE / binary BE) | ✔ drag & drop | ✔ | Vertex colors and UVs preserved |
 | OBJ | Unity native importer | ✔ | Runtime path supports groups, materials, negative indices |
 | glTF 2.0 / GLB | ✔ drag & drop | ✔ | Node hierarchy **with pivots preserved** (robot rigs / joints), metallic-roughness PBR + textures, embedded/external/base64 buffers. No Draco/meshopt/KTX2 |
-| STEP / IGES | ✔ via FreeCAD | – | Parts and labels preserved; requires [FreeCAD](https://www.freecad.org) |
+| STEP / IGES | ✔ via FreeCAD | – | Assembly **hierarchy with pivots preserved** (sub-assemblies / joints), parts and labels; requires [FreeCAD](https://www.freecad.org) |
 
 ## Quick start
 

@@ -547,6 +547,48 @@ namespace CADImporter.Tests
             finally { Directory.Delete(dir, true); }
         }
 
+        [Test]
+        public void ConvertPlacement_MatchesVertexReflectionForEveryOrientation()
+        {
+            // A preserved node hierarchy is correct only if a node's transform is converted with
+            // the SAME reflection the mesh pipeline applies to vertices. Verify the invariant
+            //   Reflect(placement * p) == ConvertedPlacement * Reflect(p)
+            // for an arbitrary placement and point, across all orientations. A wrong quaternion
+            // sign here is exactly what scatters ("explodes") an assembly.
+            var orientations = new[]
+            {
+                SourceOrientation.ZUpRightHanded,
+                SourceOrientation.YUpRightHanded,
+                SourceOrientation.YUpLeftHanded
+            };
+            var pos = new Vector3(10f, 20f, 30f);
+            var rot = Quaternion.Euler(35f, 47f, 61f);
+            var p = new Vector3(1.5f, -2.5f, 3.5f);
+
+            foreach (var o in orientations)
+            {
+                Vector3 worldSrc = pos + rot * p;              // placement applied in source space
+                Vector3 expected = Reflect(o, worldSrc);       // then converted like a vertex
+
+                var cp = pos; var cr = rot; var cs = Vector3.one;
+                MeshProcessor.ConvertPlacement(o, ref cp, ref cr, ref cs);
+                Vector3 actual = cp + cr * Reflect(o, p);      // converted placement * converted point
+
+                Assert.Less(Vector3.Distance(actual, expected), 1e-3f,
+                    $"ConvertPlacement inconsistent with vertex reflection for {o}");
+            }
+        }
+
+        static Vector3 Reflect(SourceOrientation o, Vector3 v)
+        {
+            switch (o)
+            {
+                case SourceOrientation.ZUpRightHanded: return new Vector3(v.x, v.z, v.y);
+                case SourceOrientation.YUpRightHanded: return new Vector3(-v.x, v.y, v.z);
+                default: return v;
+            }
+        }
+
         /// <summary>Builds an in-memory GLB: a unit quad translated by (10,0,0) with a red
         /// metallic-roughness material carrying an embedded (dummy) base-colour image.</summary>
         static byte[] BuildQuadGlb()

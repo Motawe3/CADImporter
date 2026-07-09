@@ -6,12 +6,12 @@ using System.Text;
 namespace CADImporter
 {
     /// <summary>
-    /// Minimal, allocation-conscious JSON reader used by the glTF parser. Deliberately
-    /// dependency-free (no Newtonsoft / JsonUtility) to keep the package self-contained and
-    /// portable. Parses into <see cref="JNode"/> trees; missing lookups return a non-existent
-    /// node so callers can chain <c>root["a"]["b"][0]</c> without null checks.
+    /// Minimal, allocation-conscious JSON reader used by the glTF parser and the STEP assembly
+    /// manifest. Deliberately dependency-free (no Newtonsoft / JsonUtility) to keep the package
+    /// self-contained and portable. Parses into <see cref="JNode"/> trees; missing lookups
+    /// return a non-existent node so callers can chain <c>root["a"]["b"][0]</c> without null checks.
     /// </summary>
-    internal sealed class JNode
+    public sealed class JNode
     {
         // value is one of: Dictionary<string, JNode>, List<JNode>, string, double, bool, null.
         readonly object _value;

@@ -214,93 +214,125 @@ def resolved(o):
     except Exception:
         return o
 
-def collect(doc):
-    # Walk the document tree the way the FreeCAD GUI does: through getSubObjects /
-    # getSubObject, which resolve App::Link instances and accumulate the placements
-    # of App::Part containers. Reading .Shape off doc.Objects misses link instances
-    # entirely and loses container placements.
-    items = []
+def placement_of(pl):
+    # Local placement relative to the parent container: position (mm) + quaternion (x,y,z,w).
+    b = pl.Base
+    q = pl.Rotation.Q
+    return [b.x, b.y, b.z], [q[0], q[1], q[2], q[3]]
 
-    def visit(root, subname, obj):
-        r = resolved(obj)
-        tid = r.TypeId
-        if tid.startswith('App::Origin') or tid in ('App::Line', 'App::Plane', 'App::Point', 'App::Annotation'):
-            return
-        # Recurse into tree children first: containers (App::Part) aggregate their
-        # children into a compound Shape since FreeCAD 1.0, so a shape check alone
-        # would swallow whole sub-assemblies into a single part.
-        try:
-            subs = obj.getSubObjects()
-        except Exception:
-            subs = ()
-        if subs:
-            for s in subs:
-                try:
-                    child = root.getSubObject(subname + s, retType=1)
-                except Exception:
-                    child = None
-                if child is not None:
-                    visit(root, subname + s, child)
-            return
-        if has_shape(r):
+SKIP_TYPES = ('App::Line', 'App::Plane', 'App::Point', 'App::Annotation')
+
+def build_tree(obj, counter):
+    # Preserve the assembly tree: each object becomes a node carrying its LOCAL placement.
+    # Containers (App::Part / links, which have getSubObjects) become group nodes; leaf parts
+    # are tessellated in their own local frame (Shape.Placement stripped) so pivots survive.
+    r = resolved(obj)
+    tid = r.TypeId
+    if tid.startswith('App::Origin') or tid in SKIP_TYPES:
+        return None
+    name = obj.Label or r.Label
+    pos, quat = placement_of(obj.Placement)
+    try:
+        subs = obj.getSubObjects()
+    except Exception:
+        subs = ()
+    if subs:
+        children = []
+        for s in subs:
             try:
-                # retType=0 returns the shape with the full placement chain applied.
-                shape = root.getSubObject(subname, retType=0) if subname else r.Shape
+                child = obj.getSubObject(s, retType=1)
             except Exception:
-                shape = None
-            if shape is not None and not shape.isNull() and len(shape.Faces) > 0:
-                items.append((obj.Label or r.Label, shape))
+                child = None
+            if child is not None:
+                cn = build_tree(child, counter)
+                if cn is not None:
+                    children.append(cn)
+        if not children:
+            return None
+        return {{'name': name, 'pos': pos, 'quat': quat, 'mesh': -1, 'children': children}}
+    if has_shape(r):
+        try:
+            local = r.Shape.copy()
+            local.Placement = FreeCAD.Placement()  # strip -> pivot-at-origin local geometry
+            m = mesh_shape(local)
+        except Exception:
+            traceback.print_exc()
+            return None
+        if m.CountFacets == 0:
+            return None
+        idx = counter[0]
+        m.write(os.path.join(OUT, '%03d.stl' % idx))
+        counter[0] += 1
+        if counter[0] % 25 == 0:
+            prog('tessellated %d part(s)...' % counter[0])
+        return {{'name': name, 'pos': pos, 'quat': quat, 'mesh': idx, 'children': []}}
+    return None
 
-    for root in doc.RootObjects:
-        visit(root, '', root)
-    if items:
-        return items
-
-    # Fallback for documents without tree structure: flat leaf collection.
-    objs = [o for o in doc.Objects if has_shape(o)]
-    shaped = set(objs)
-    for o in objs:
-        if any((child in shaped) for child in o.OutList):
-            continue
-        items.append((o.Label, o.Shape))
-    return items
+def count_leaves(n):
+    c = 1 if n.get('mesh', -1) >= 0 else 0
+    for ch in n.get('children', []):
+        c += count_leaves(ch)
+    return c
 
 try:
-    items = []
+    import json
+    roots = []
+    world_bbox = None
+    used_tree = False
     try:
         import Import
         doc = FreeCAD.newDocument('cadimport')
         prog('loading B-rep (large files can take a few minutes)...')
         Import.insert(SRC, doc.Name)
         prog('loaded; walking assembly tree...')
-        items = collect(doc)
+        counter = [0]
+        for ro in doc.RootObjects:
+            n = build_tree(ro, counter)
+            if n is not None:
+                roots.append(n)
+        try:
+            bb = None
+            for ro in doc.RootObjects:
+                if hasattr(ro, 'Shape') and ro.Shape is not None and not ro.Shape.isNull():
+                    x = ro.Shape.BoundBox
+                    vals = [x.XMin, x.YMin, x.ZMin, x.XMax, x.YMax, x.ZMax]
+                    if bb is None:
+                        bb = vals
+                    else:
+                        bb = [min(bb[0], vals[0]), min(bb[1], vals[1]), min(bb[2], vals[2]),
+                              max(bb[3], vals[3]), max(bb[4], vals[4]), max(bb[5], vals[5])]
+            world_bbox = bb
+        except Exception:
+            world_bbox = None
+        used_tree = len(roots) > 0
     except Exception:
-        items = []
-    if not items:
+        traceback.print_exc()
+        roots = []
+
+    if not used_tree:
         prog('reading solids directly...')
         shape = Part.Shape()
         shape.read(SRC)
         solids = shape.Solids if shape.Solids else [shape]
         base = os.path.splitext(os.path.basename(SRC))[0]
-        items = [(base + ('_' + str(i) if len(solids) > 1 else ''), s) for i, s in enumerate(solids)]
-
-    total = len(items)
-    prog('tessellating %d part(s)...' % total)
-    count = 0
-    for label, shape in items:
-        try:
-            m = mesh_shape(shape)
+        counter = [0]
+        for i, s in enumerate(solids):
+            m = mesh_shape(s)
             if m.CountFacets == 0:
                 continue
-            m.write(os.path.join(OUT, '%03d_%s.stl' % (count, sanitize(label))))
-            count += 1
-        except Exception:
-            traceback.print_exc()
-        if count % 25 == 0 and count > 0:
-            prog('tessellated %d/%d part(s)...' % (count, total))
+            idx = counter[0]
+            m.write(os.path.join(OUT, '%03d.stl' % idx))
+            counter[0] += 1
+            nm = base + ('_' + str(i) if len(solids) > 1 else '')
+            roots.append({{'name': nm, 'pos': [0, 0, 0], 'quat': [0, 0, 0, 1], 'mesh': idx, 'children': []}})
 
-    prog('done: %d part(s)' % count)
-    print('{OkMarker} %d' % count)
+    manifest = {{'unit': 'mm', 'worldBBox': world_bbox, 'nodes': roots}}
+    with open(os.path.join(OUT, 'manifest.json'), 'w') as mf:
+        json.dump(manifest, mf)
+
+    total = sum(count_leaves(n) for n in roots)
+    prog('done: %d part(s)' % total)
+    print('{OkMarker} %d' % total)
 except Exception:
     traceback.print_exc()
     sys.exit(1)
