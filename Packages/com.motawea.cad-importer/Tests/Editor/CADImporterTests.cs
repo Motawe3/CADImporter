@@ -704,6 +704,130 @@ namespace CADImporter.Tests
             }
         }
 
+        // --- parallel processing (multi-core import) ----------------------------------------
+
+        static CADMeshData BuildOffsetCubeSoup(int offset)
+        {
+            var tris = CubeTriangles();
+            var pos = new Vector3[tris.Count];
+            for (int i = 0; i < tris.Count; i++)
+                pos[i] = tris[i] + new Vector3(offset * 2f, 0, 0);
+            return new CADMeshData
+            {
+                Name = $"cube{offset}",
+                Positions = pos,
+                Submeshes = new[] { CADMeshData.SequentialIndices(pos.Length) }
+            };
+        }
+
+        [Test]
+        public void Process_ParallelMatchesSequentialPerMeshResults()
+        {
+            // Process() fans meshes across worker threads; the result must be bit-identical
+            // to processing each mesh alone (same transform, normals, weld — no cross-talk).
+            var opts = new CADProcessOptions
+            {
+                Scale = 0.001f,
+                Orientation = SourceOrientation.ZUpRightHanded,
+                Weld = true,
+                WeldTolerance = 1e-5f,
+                RecalculateNormals = true,
+                SmoothingAngleDeg = 30f
+            };
+
+            var parallelModel = new CADModel { Name = "multi" };
+            var sequential = new List<CADMeshData>();
+            for (int i = 0; i < 12; i++)
+            {
+                var mesh = BuildOffsetCubeSoup(i);
+                parallelModel.Root.Children.Add(new CADNode { Name = $"p{i}", Mesh = mesh });
+                sequential.Add(MeshProcessor.Clone(mesh));
+            }
+
+            MeshProcessor.Process(parallelModel, opts); // >1 mesh -> parallel path
+            foreach (var m in sequential)
+                MeshProcessor.ProcessMesh(m, opts);
+
+            for (int i = 0; i < sequential.Count; i++)
+            {
+                var a = parallelModel.Root.Children[i].Mesh;
+                var b = sequential[i];
+                Assert.AreEqual(b.VertexCount, a.VertexCount, $"part {i} vertex count");
+                Assert.AreEqual(b.TriangleCount, a.TriangleCount, $"part {i} triangle count");
+                for (int v = 0; v < b.Positions.Length; v++)
+                    Assert.AreEqual(b.Positions[v], a.Positions[v], $"part {i} position {v}");
+                for (int v = 0; v < b.Normals.Length; v++)
+                    Assert.AreEqual(b.Normals[v], a.Normals[v], $"part {i} normal {v}");
+                CollectionAssert.AreEqual(b.Submeshes[0], a.Submeshes[0], $"part {i} indices");
+            }
+        }
+
+        [Test]
+        public void Process_SharedMeshInstanceIsProcessedExactlyOnce()
+        {
+            // Two nodes referencing the SAME mesh data (glTF-style instancing) must not get
+            // the transform applied twice.
+            var mesh = BuildOffsetCubeSoup(0);
+            var model = new CADModel { Name = "shared" };
+            model.Root.Children.Add(new CADNode { Name = "a", Mesh = mesh });
+            model.Root.Children.Add(new CADNode { Name = "b", Mesh = mesh });
+
+            var opts = new CADProcessOptions
+            {
+                Scale = 2f,
+                Orientation = SourceOrientation.YUpLeftHanded,
+                Weld = false,
+                WeldTolerance = 1e-5f,
+                RecalculateNormals = false,
+                SmoothingAngleDeg = 30f
+            };
+            MeshProcessor.Process(model, opts);
+
+            float maxX = float.MinValue;
+            foreach (var p in mesh.Positions) maxX = Mathf.Max(maxX, p.x);
+            Assert.AreEqual(2f, maxX, 1e-4f, "scale applied more than once to a shared mesh");
+        }
+
+        [Test]
+        public void CadParallel_RunsAllItemsAndReportsMonotonicProgressOnCallingThread()
+        {
+            var items = new List<int>();
+            for (int i = 0; i < 100; i++) items.Add(i);
+
+            int sum = 0;
+            int callingThread = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            bool progressOnCallingThread = true, monotonic = true;
+            float last = -1f;
+
+            CadParallel.ForEach(items,
+                i => System.Threading.Interlocked.Add(ref sum, i),
+                f =>
+                {
+                    if (System.Threading.Thread.CurrentThread.ManagedThreadId != callingThread)
+                        progressOnCallingThread = false;
+                    if (f < last) monotonic = false;
+                    last = f;
+                });
+
+            Assert.AreEqual(4950, sum, "every item must run exactly once");
+            Assert.IsTrue(progressOnCallingThread, "progress must be raised on the calling thread");
+            Assert.IsTrue(monotonic, "progress must never go backwards");
+            Assert.AreEqual(1f, last, "progress must end at 1");
+        }
+
+        [Test]
+        public void CadParallel_PropagatesBodyExceptionUnwrapped()
+        {
+            var items = new List<int>();
+            for (int i = 0; i < 32; i++) items.Add(i);
+
+            Assert.Throws<InvalidDataException>(() =>
+                CadParallel.ForEach(items, i =>
+                {
+                    if (i % 2 == 0) throw new InvalidDataException("corrupt part");
+                }));
+        }
+
         /// <summary>Builds an in-memory GLB: a unit quad translated by (10,0,0) with a red
         /// metallic-roughness material carrying an embedded (dummy) base-colour image.</summary>
         static byte[] BuildQuadGlb()

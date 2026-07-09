@@ -60,6 +60,8 @@ namespace CADImporter.Editor
                     return;
                 }
 
+                var parts = StepScriptedImporter.ParseConvertedParts(tempDir, Path.GetFileName(ctx.assetPath));
+
                 var model = new CADModel { Name = name, Format = "IFC", SourcePath = ctx.assetPath };
                 var palette = new HashSet<string>();
 
@@ -67,7 +69,7 @@ namespace CADImporter.Editor
                 var root = JNode.Parse(File.ReadAllText(manifestPath));
                 foreach (var mn in root["nodes"].Items)
                 {
-                    var node = BuildIfcNode(mn, tempDir, s.sourceOrientation, model, palette);
+                    var node = BuildIfcNode(mn, tempDir, parts, s.sourceOrientation, model, palette);
                     if (node != null) model.Root.Children.Add(node);
                 }
 
@@ -100,8 +102,8 @@ namespace CADImporter.Editor
         /// material (deduplicated by colour, so batching stays effective). Returns null for empty
         /// branches.
         /// </summary>
-        static CADNode BuildIfcNode(JNode mn, string dir, SourceOrientation orientation,
-            CADModel model, HashSet<string> palette)
+        static CADNode BuildIfcNode(JNode mn, string dir, Dictionary<string, CADModel> parts,
+            SourceOrientation orientation, CADModel model, HashSet<string> palette)
         {
             var node = new CADNode { Name = mn["name"].AsString("Element") };
 
@@ -139,9 +141,8 @@ namespace CADImporter.Editor
                 }
 
                 string stl = Path.Combine(dir, mesh.ToString("D3") + ".stl");
-                if (File.Exists(stl))
+                if (parts.TryGetValue(stl, out var part))
                 {
-                    var part = StlParser.Parse(stl);
                     var kids = part.Root.Children;
                     if (kids.Count == 1)
                     {
@@ -161,7 +162,7 @@ namespace CADImporter.Editor
 
             foreach (var child in mn["children"].Items)
             {
-                var cn = BuildIfcNode(child, dir, orientation, model, palette);
+                var cn = BuildIfcNode(child, dir, parts, orientation, model, palette);
                 if (cn != null) node.Children.Add(cn);
             }
 

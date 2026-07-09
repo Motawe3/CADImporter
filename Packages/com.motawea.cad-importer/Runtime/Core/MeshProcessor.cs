@@ -12,26 +12,24 @@ namespace CADImporter
     public static class MeshProcessor
     {
         /// <summary>
-        /// Processes every mesh in the model. <paramref name="onProgress"/>, when supplied, is
-        /// invoked with a 0..1 fraction as each mesh completes, so a long import (large STEP/IFC
-        /// assemblies) can drive a determinate progress bar instead of looking hung.
+        /// Processes every mesh in the model, fanning independent meshes across all cores.
+        /// <paramref name="onProgress"/>, when supplied, is invoked on the calling thread with a
+        /// 0..1 fraction as meshes complete, so a long import (large STEP/IFC assemblies) can
+        /// drive a determinate progress bar instead of looking hung.
         /// </summary>
         public static void Process(CADModel model, in CADProcessOptions options,
             Action<float> onProgress = null)
         {
-            int total = 0;
-            if (onProgress != null)
-                foreach (var node in model.EnumerateNodes())
-                    if (Processable(node.Mesh)) total++;
-
-            int done = 0;
+            // Dedupe by reference: a mesh instanced under several nodes must be processed
+            // exactly once (transform/weld mutate it in place).
+            var meshes = new List<CADMeshData>();
+            var seen = new HashSet<CADMeshData>();
             foreach (var node in model.EnumerateNodes())
-            {
-                var m = node.Mesh;
-                if (!Processable(m)) continue;
-                ProcessMesh(m, options);
-                if (onProgress != null && total > 0) onProgress((float)++done / total);
-            }
+                if (Processable(node.Mesh) && seen.Add(node.Mesh))
+                    meshes.Add(node.Mesh);
+
+            var o = options; // 'in' parameters cannot be captured by the worker lambda
+            CadParallel.ForEach(meshes, m => ProcessMesh(m, o), onProgress);
         }
 
         static bool Processable(CADMeshData m) =>

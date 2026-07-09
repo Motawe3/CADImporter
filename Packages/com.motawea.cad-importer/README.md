@@ -61,6 +61,11 @@ GameObject robot = await CADRuntimeImporter.ImportAsync(
 
 ## Pipeline & performance decisions
 
+- **Multi-core processing** — the CPU-heavy import stages (welding, normal generation,
+  LOD/collision decimation, per-part STL parsing for STEP/IFC) fan out across all cores;
+  only the final Unity mesh/prefab construction runs on the main thread. Large multi-part
+  assemblies import several times faster on typical workstations. The runtime
+  `ImportAsync` keeps all of this off the main thread, including collider decimation.
 - **Unit conversion** — CAD files are usually millimeters; everything is scaled to meters
   (PhysX and Unity lighting assume meters — critical for correct physics in robotics).
 - **Axis conversion** — CAD is Z-up right-handed; converted to Unity's Y-up left-handed

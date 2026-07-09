@@ -66,19 +66,27 @@ namespace CADImporter
         public static GameObject Import(string path, CADRuntimeImportSettings settings = null, Transform parent = null)
         {
             settings ??= new CADRuntimeImportSettings();
-            var model = ParseAndProcess(path, settings);
-            return Build(model, settings, parent);
+            var payload = ParseAndProcess(path, settings);
+            return Build(payload, settings, parent);
         }
 
         /// <summary>Parses and processes off the main thread, then builds the GameObject hierarchy.</summary>
         public static async Task<GameObject> ImportAsync(string path, CADRuntimeImportSettings settings = null, Transform parent = null)
         {
             settings ??= new CADRuntimeImportSettings();
-            var model = await Task.Run(() => ParseAndProcess(path, settings));
-            return Build(model, settings, parent);
+            var payload = await Task.Run(() => ParseAndProcess(path, settings));
+            return Build(payload, settings, parent);
         }
 
-        static CADModel ParseAndProcess(string path, CADRuntimeImportSettings settings)
+        /// <summary>Result of the worker-thread phase: the processed model plus every part's
+        /// pre-decimated collision data, so the main-thread build only creates Unity objects.</summary>
+        sealed class ParsedPayload
+        {
+            public CADModel Model;
+            public Dictionary<CADMeshData, CADMeshData> ColliderData;
+        }
+
+        static ParsedPayload ParseAndProcess(string path, CADRuntimeImportSettings settings)
         {
             if (!File.Exists(path))
                 throw new FileNotFoundException("CAD file not found.", path);
@@ -98,11 +106,50 @@ namespace CADImporter
             }
 
             MeshProcessor.Process(model, settings.ToProcessOptions());
-            return model;
+            return new ParsedPayload
+            {
+                Model = model,
+                ColliderData = PrecomputeColliderData(model, settings)
+            };
         }
 
-        static GameObject Build(CADModel model, CADRuntimeImportSettings settings, Transform parent)
+        /// <summary>
+        /// Welds and decimates collision meshes for every part while still on the worker
+        /// thread (in parallel), so the main-thread build doesn't stall on decimation.
+        /// </summary>
+        static Dictionary<CADMeshData, CADMeshData> PrecomputeColliderData(
+            CADModel model, CADRuntimeImportSettings settings)
         {
+            if (!settings.generateColliders || settings.colliderQuality >= 0.999f)
+                return null;
+
+            var parts = new List<CADMeshData>();
+            var seen = new HashSet<CADMeshData>();
+            foreach (var node in model.EnumerateNodes())
+            {
+                var data = node.Mesh;
+                if (data != null && data.TriangleCount > 128 && seen.Add(data))
+                    parts.Add(data);
+            }
+            if (parts.Count == 0) return null;
+
+            var result = new Dictionary<CADMeshData, CADMeshData>(parts.Count);
+            float tolerance = Mathf.Max(settings.weldTolerance, 1e-9f);
+            float quality = settings.colliderQuality;
+            CadParallel.ForEach(parts, data =>
+            {
+                // Position-only weld: merges shading splits back into connected
+                // topology so decimation doesn't erode hard edges into holes.
+                var welded = MeshProcessor.PositionWeldedCopy(data, tolerance);
+                var decimated = MeshDecimator.Decimate(welded, quality);
+                lock (result) result[data] = decimated;
+            });
+            return result;
+        }
+
+        static GameObject Build(ParsedPayload payload, CADRuntimeImportSettings settings, Transform parent)
+        {
+            var model = payload.Model;
             var root = new GameObject(model.Name);
             if (parent != null) root.transform.SetParent(parent, false);
 
@@ -115,7 +162,8 @@ namespace CADImporter
             float scale = CADUnits.ToMeters(settings.sourceUnit) * settings.additionalScale;
             int totalV = 0, totalT = 0, parts = 0;
             foreach (var child in model.Root.Children)
-                BuildNode(child, root.transform, settings, materialLookup, scale, ref totalV, ref totalT, ref parts);
+                BuildNode(child, root.transform, settings, materialLookup, payload.ColliderData,
+                    scale, ref totalV, ref totalT, ref parts);
 
             var info = root.AddComponent<CADModelInfo>();
             info.sourceFile = model.SourcePath ?? model.Name;
@@ -130,7 +178,8 @@ namespace CADImporter
         }
 
         static void BuildNode(CADNode node, Transform parent, CADRuntimeImportSettings settings,
-            Dictionary<string, Material> materials, float scale, ref int totalV, ref int totalT, ref int parts)
+            Dictionary<string, Material> materials, Dictionary<CADMeshData, CADMeshData> colliderData,
+            float scale, ref int totalV, ref int totalT, ref int parts)
         {
             var go = new GameObject(string.IsNullOrEmpty(node.Name) ? "Part" : node.Name);
             go.transform.SetParent(parent, false);
@@ -157,10 +206,12 @@ namespace CADImporter
                 if (settings.generateColliders)
                 {
                     CADMeshData colData = data;
-                    if (settings.colliderQuality < 0.999f && data.TriangleCount > 128)
+                    if (settings.colliderQuality < 0.999f && data.TriangleCount > 128 &&
+                        (colliderData == null || !colliderData.TryGetValue(data, out colData)))
                     {
-                        // Position-only weld: merges shading splits back into connected
-                        // topology so decimation doesn't erode hard edges into holes.
+                        // Fallback (normally precomputed on the worker thread): position-only
+                        // weld merges shading splits back into connected topology so decimation
+                        // doesn't erode hard edges into holes.
                         var welded = MeshProcessor.PositionWeldedCopy(
                             data, Mathf.Max(settings.weldTolerance, 1e-9f));
                         colData = MeshDecimator.Decimate(welded, settings.colliderQuality);
@@ -176,7 +227,8 @@ namespace CADImporter
             }
 
             foreach (var child in node.Children)
-                BuildNode(child, go.transform, settings, materials, scale, ref totalV, ref totalT, ref parts);
+                BuildNode(child, go.transform, settings, materials, colliderData,
+                    scale, ref totalV, ref totalT, ref parts);
         }
 
         static Material[] ResolveMaterials(CADMeshData data, CADRuntimeImportSettings settings,

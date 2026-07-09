@@ -26,6 +26,20 @@ namespace CADImporter.Editor
             public string ProgressTitle;
             public int TotalParts;
             public int LastReportedPermille;
+            public Dictionary<CADMeshData, PartPrep> Prep;
+            public float BuildStart;
+        }
+
+        /// <summary>
+        /// Pure-CPU per-part results (LOD decimation, collision decimation) computed on worker
+        /// threads before the main-thread Unity object build.
+        /// </summary>
+        sealed class PartPrep
+        {
+            /// <summary>Decimated + re-normaled data for LOD1..N; null when LODs are off for this part.</summary>
+            public CADMeshData[] LodLevels;
+            /// <summary>Collision data for Convex/Simplified modes; null otherwise.</summary>
+            public CADMeshData ColliderData;
         }
 
         public static void Build(AssetImportContext ctx, CADModel model, CADImportSettings settings)
@@ -48,11 +62,15 @@ namespace CADImporter.Editor
 
             try
             {
-                // Processing (weld/normals) is the first ~40% of the build; part construction
-                // (meshing, LODs, colliders) the rest. Both drive a determinate bar so a large
-                // assembly shows real "part i of N" progress rather than an elapsed-time spinner.
+                // Processing (weld/normals) is the first ~40% of the build, LOD/collider
+                // decimation the next ~30%, part construction the rest. The two CPU phases run
+                // in parallel across all cores; only Unity object construction stays on the
+                // main thread. All three drive a determinate bar so a large assembly shows
+                // real "part i of N" progress rather than an elapsed-time spinner.
                 MeshProcessor.Process(model, settings.ToProcessOptions(),
                     f => Report(c, f * 0.4f, $"Processing geometry — {Mathf.RoundToInt(f * totalParts)}/{totalParts} parts"));
+
+                PrecomputePartData(c, model);
 
                 bool vertexColorUnlit = settings.materialMode == MaterialMode.VertexColorUnlit;
                 c.DefaultMaterial = BuildMaterial(c, null, vertexColorUnlit, settings.defaultColor);
@@ -104,6 +122,93 @@ namespace CADImporter.Editor
             ctx.SetMainObject(root);
         }
 
+        /// <summary>
+        /// Computes every part's LOD and collision mesh data in parallel on worker threads.
+        /// Decimation and welding are pure CADMeshData work, so only the subsequent Unity
+        /// object construction needs the main thread. Results are keyed by mesh reference
+        /// (parts are deduped, so instanced meshes are prepared once).
+        /// </summary>
+        static void PrecomputePartData(Context c, CADModel model)
+        {
+            var s = c.Settings;
+            c.Prep = new Dictionary<CADMeshData, PartPrep>();
+            c.BuildStart = 0.4f;
+
+            bool needCollider = s.colliderMode == ColliderMode.ConvexMesh
+                             || s.colliderMode == ColliderMode.SimplifiedMesh;
+            bool lodsEnabled = s.generateLODs && s.lodQualities != null && s.lodQualities.Length > 0;
+            if (!needCollider && !lodsEnabled) return;
+
+            var parts = new List<CADMeshData>();
+            var seen = new HashSet<CADMeshData>();
+            foreach (var n in model.EnumerateNodes())
+                if (n.Mesh != null && n.Mesh.TriangleCount > 0 && seen.Add(n.Mesh))
+                    parts.Add(n.Mesh);
+            if (parts.Count == 0) return;
+
+            var prep = c.Prep;
+            CadParallel.ForEach(parts,
+                data =>
+                {
+                    var p = ComputePartPrep(data, s);
+                    lock (prep) prep[data] = p;
+                },
+                f => Report(c, 0.4f + 0.3f * f,
+                    $"Decimating LODs/colliders — {Mathf.RoundToInt(f * parts.Count)}/{parts.Count} parts"));
+            c.BuildStart = 0.7f;
+        }
+
+        static PartPrep ComputePartPrep(CADMeshData data, CADImportSettings s)
+        {
+            float tol = Mathf.Max(s.weldTolerance, 1e-9f);
+
+            // Decimation and collision need connected topology. The render mesh has vertices
+            // split along hard edges for shading, which the decimator would see as open
+            // borders (tearing LODs apart) — so decimate a position-only welded copy instead.
+            CADMeshData welded = null;
+            CADMeshData Welded() => welded ??= MeshProcessor.PositionWeldedCopy(data, tol);
+
+            var prep = new PartPrep();
+
+            bool useLods = s.generateLODs
+                && s.lodQualities != null && s.lodQualities.Length > 0
+                && data.TriangleCount >= s.lodMinTriangles;
+            if (useLods)
+            {
+                var levels = new List<CADMeshData>();
+                int previousTris = data.TriangleCount;
+                for (int i = 0; i < s.lodQualities.Length; i++)
+                {
+                    float quality = Mathf.Clamp(s.lodQualities[i], 0.01f, 0.95f);
+                    var decimated = MeshDecimator.Decimate(Welded(), quality);
+                    int tris = decimated.TriangleCount;
+                    if (tris < 8 || tris >= previousTris) break;
+                    previousTris = tris;
+
+                    MeshProcessor.RecalculateSmoothNormals(decimated, tol, s.smoothingAngle);
+                    levels.Add(decimated);
+                }
+                prep.LodLevels = levels.ToArray();
+            }
+
+            if (s.colliderMode == ColliderMode.ConvexMesh || s.colliderMode == ColliderMode.SimplifiedMesh)
+            {
+                CADMeshData colData = Welded();
+                if (s.colliderQuality < 0.999f && colData.TriangleCount > 128)
+                    colData = MeshDecimator.Decimate(colData, s.colliderQuality);
+                if (colData.TriangleCount < 4) colData = Welded();
+                prep.ColliderData = colData;
+            }
+
+            return prep;
+        }
+
+        static PartPrep GetPrep(Context c, CADMeshData data)
+        {
+            if (c.Prep != null && c.Prep.TryGetValue(data, out var p) && p != null) return p;
+            return ComputePartPrep(data, c.Settings); // fallback; normally precomputed
+        }
+
         static void BuildNode(Context c, CADNode node, Transform parent)
         {
             // Sibling names must be unique: Unity derives prefab-internal file IDs from the
@@ -127,7 +232,7 @@ namespace CADImporter.Editor
             if (data != null && data.TriangleCount > 0)
             {
                 c.PartCount++;
-                Report(c, 0.4f + 0.6f * c.PartCount / Mathf.Max(1, c.TotalParts),
+                Report(c, c.BuildStart + (1f - c.BuildStart) * c.PartCount / Mathf.Max(1, c.TotalParts),
                     $"Building part {c.PartCount}/{c.TotalParts}: {go.name}");
                 var s = c.Settings;
 
@@ -141,24 +246,16 @@ namespace CADImporter.Editor
 
                 var materials = ResolveMaterials(c, data);
 
-                // Decimation and collision need connected topology. The render mesh has
-                // vertices split along hard edges for shading, which the decimator would
-                // see as open borders (tearing LODs apart) — so rebuild a position-only
-                // welded copy and decimate that instead.
-                CADMeshData welded = null;
-                CADMeshData Welded() =>
-                    welded ??= MeshProcessor.PositionWeldedCopy(data, Mathf.Max(s.weldTolerance, 1e-9f));
+                // LOD and collision mesh data were decimated in parallel up front
+                // (see PrecomputePartData); here we only construct Unity objects.
+                var prep = GetPrep(c, data);
 
-                bool useLods = s.generateLODs
-                    && s.lodQualities != null && s.lodQualities.Length > 0
-                    && data.TriangleCount >= s.lodMinTriangles;
-
-                if (useLods)
-                    BuildLodChain(c, go, data, mesh0, materials, Welded());
+                if (prep.LodLevels != null)
+                    BuildLodChain(c, go, mesh0, materials, prep.LodLevels);
                 else
                     AttachRenderer(go, mesh0, materials);
 
-                BuildCollider(c, go, data, mesh0, Welded);
+                BuildCollider(c, go, mesh0, prep);
 
                 // FullMesh collision reuses mesh0, which must then stay readable for cooking.
                 if (!s.readWriteMeshes && s.colliderMode != ColliderMode.FullMesh)
@@ -169,8 +266,8 @@ namespace CADImporter.Editor
                 BuildNode(c, child, go.transform);
         }
 
-        static void BuildLodChain(Context c, GameObject go, CADMeshData data, Mesh mesh0,
-            Material[] materials, CADMeshData welded)
+        static void BuildLodChain(Context c, GameObject go, Mesh mesh0,
+            Material[] materials, CADMeshData[] lodLevels)
         {
             var s = c.Settings;
             var lods = new List<LOD>();
@@ -178,17 +275,9 @@ namespace CADImporter.Editor
             var r0 = CreateRendererChild(go, go.name + "_LOD0", mesh0, materials);
             lods.Add(new LOD(0f, new[] { r0 }));
 
-            int previousTris = data.TriangleCount;
-            for (int i = 0; i < s.lodQualities.Length; i++)
+            for (int i = 0; i < lodLevels.Length; i++)
             {
-                float quality = Mathf.Clamp(s.lodQualities[i], 0.01f, 0.95f);
-                var decimated = MeshDecimator.Decimate(welded, quality);
-                int tris = decimated.TriangleCount;
-                if (tris < 8 || tris >= previousTris) break;
-                previousTris = tris;
-
-                MeshProcessor.RecalculateSmoothNormals(decimated,
-                    Mathf.Max(s.weldTolerance, 1e-9f), s.smoothingAngle);
+                var decimated = lodLevels[i];
                 var lodMesh = UnityMeshBuilder.Build(decimated);
                 lodMesh.name = $"{go.name}_LOD{i + 1}";
                 AddAsset(c, lodMesh);
@@ -216,8 +305,7 @@ namespace CADImporter.Editor
             lodGroup.RecalculateBounds();
         }
 
-        static void BuildCollider(Context c, GameObject go, CADMeshData data, Mesh mesh0,
-            Func<CADMeshData> welded)
+        static void BuildCollider(Context c, GameObject go, Mesh mesh0, PartPrep prep)
         {
             var s = c.Settings;
             switch (s.colliderMode)
@@ -243,10 +331,8 @@ namespace CADImporter.Editor
                 case ColliderMode.ConvexMesh:
                 case ColliderMode.SimplifiedMesh:
                 {
-                    CADMeshData colData = welded();
-                    if (s.colliderQuality < 0.999f && colData.TriangleCount > 128)
-                        colData = MeshDecimator.Decimate(colData, s.colliderQuality);
-                    if (colData.TriangleCount < 4) colData = welded();
+                    CADMeshData colData = prep.ColliderData;
+                    if (colData == null) return; // part had no triangles to weld
 
                     var colMesh = UnityMeshBuilder.BuildCollision(colData, go.name + "_collision");
                     AddAsset(c, colMesh);

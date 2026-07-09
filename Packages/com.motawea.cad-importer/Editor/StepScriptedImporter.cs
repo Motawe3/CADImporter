@@ -47,6 +47,8 @@ namespace CADImporter.Editor
                     return;
                 }
 
+                var parts = ParseConvertedParts(tempDir, Path.GetFileName(ctx.assetPath));
+
                 var model = new CADModel { Name = name, Format = FormatOf(ctx.assetPath), SourcePath = ctx.assetPath };
                 string manifestPath = Path.Combine(tempDir, "manifest.json");
                 if (File.Exists(manifestPath))
@@ -54,7 +56,7 @@ namespace CADImporter.Editor
                     var root = JNode.Parse(File.ReadAllText(manifestPath));
                     foreach (var mn in root["nodes"].Items)
                     {
-                        var node = BuildStepNode(mn, tempDir, s.sourceOrientation);
+                        var node = BuildStepNode(mn, tempDir, parts, s.sourceOrientation);
                         if (node != null) model.Root.Children.Add(node);
                     }
                 }
@@ -63,7 +65,8 @@ namespace CADImporter.Editor
                     // Fallback (older converter output): flat, unnamed-index STL reassembly.
                     foreach (var stl in Directory.GetFiles(tempDir, "*.stl").OrderBy(f => f, StringComparer.Ordinal))
                     {
-                        var part = StlParser.Parse(stl);
+                        if (!parts.TryGetValue(stl, out var part))
+                            part = StlParser.Parse(stl);
                         foreach (var child in part.Root.Children)
                             model.Root.Children.Add(child);
                     }
@@ -90,6 +93,31 @@ namespace CADImporter.Editor
             }
         }
 
+        /// <summary>
+        /// Parses every per-part STL the FreeCAD converter emitted, in parallel across all
+        /// cores (a large assembly produces hundreds of files). Keyed by full file path.
+        /// Shared with the IFC importer, whose converter emits the same layout.
+        /// </summary>
+        internal static System.Collections.Generic.Dictionary<string, CADModel> ParseConvertedParts(
+            string dir, string label)
+        {
+            var files = Directory.GetFiles(dir, "*.stl");
+            var parts = new System.Collections.Generic.Dictionary<string, CADModel>(
+                files.Length, StringComparer.OrdinalIgnoreCase);
+            if (files.Length == 0) return parts;
+
+            string title = $"CAD Importer — {label}";
+            CadParallel.ForEach(files,
+                f =>
+                {
+                    var part = StlParser.Parse(f);
+                    lock (parts) parts[f] = part;
+                },
+                f => UnityEditor.EditorUtility.DisplayProgressBar(title,
+                    $"Parsing tessellated parts — {Mathf.RoundToInt(f * files.Length)}/{files.Length}", f));
+            return parts;
+        }
+
         static string FormatOf(string path)
         {
             switch (Path.GetExtension(path).ToLowerInvariant())
@@ -110,7 +138,8 @@ namespace CADImporter.Editor
         /// regardless of the chosen orientation. Position is scaled with the geometry by the
         /// builder. Returns null for empty branches.
         /// </summary>
-        static CADNode BuildStepNode(JNode mn, string dir, SourceOrientation orientation)
+        static CADNode BuildStepNode(JNode mn, string dir,
+            System.Collections.Generic.Dictionary<string, CADModel> parts, SourceOrientation orientation)
         {
             var node = new CADNode { Name = mn["name"].AsString("Part") };
 
@@ -132,9 +161,8 @@ namespace CADImporter.Editor
             if (mesh >= 0)
             {
                 string stl = Path.Combine(dir, mesh.ToString("D3") + ".stl");
-                if (File.Exists(stl))
+                if (parts.TryGetValue(stl, out var part))
                 {
-                    var part = StlParser.Parse(stl);
                     var kids = part.Root.Children;
                     if (kids.Count == 1)
                         node.Mesh = kids[0].Mesh;
@@ -146,7 +174,7 @@ namespace CADImporter.Editor
 
             foreach (var child in mn["children"].Items)
             {
-                var cn = BuildStepNode(child, dir, orientation);
+                var cn = BuildStepNode(child, dir, parts, orientation);
                 if (cn != null) node.Children.Add(cn);
             }
 

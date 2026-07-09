@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     timeout and Console progress logging apply to IFC too.
 
 ### Changed
+- **Multi-core import processing.** The CPU-heavy stages of every import now run in parallel
+  across all cores instead of one part at a time, which substantially speeds up large
+  multi-part models (STEP/IFC assemblies, multi-solid STLs, glTF scenes):
+  - Geometry processing (unit scaling, axis conversion, smooth-normal generation, welding)
+    runs one worker task per part.
+  - LOD decimation and collision-mesh decimation for all parts are precomputed on worker
+    threads before the (main-thread-only) Unity mesh/prefab construction.
+  - The per-part STL files FreeCAD emits for STEP/IGES/IFC are parsed in parallel.
+  - The runtime loader's `ImportAsync` now also welds/decimates collision meshes on the
+    worker thread (previously this ran on the main thread and could hitch the simulation).
+  Results are identical to the previous sequential pipeline — parts are processed
+  independently and each part's math is unchanged (covered by new equivalence tests).
 - **Determinate import progress bar for every format.** Imports now show a real progress bar
   with a calculated part count instead of only an elapsed-time spinner, so long jobs don't look
   stuck:
