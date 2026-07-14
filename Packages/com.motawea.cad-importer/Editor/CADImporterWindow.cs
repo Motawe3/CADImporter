@@ -34,6 +34,7 @@ namespace CADImporter.Editor
         Vector2 scroll;
         string targetFolder = "Assets/CADModels";
         bool addToScene = true;
+        bool markStatic = false;
         string lastReport = "";
 
         [MenuItem("Tools/CAD Importer")]
@@ -244,6 +245,16 @@ namespace CADImporter.Editor
             }
             EditorGUILayout.EndHorizontal();
             addToScene = EditorGUILayout.ToggleLeft("Add imported model(s) to the open scene", addToScene);
+            using (new EditorGUI.DisabledScope(!addToScene))
+            {
+                EditorGUI.indentLevel++;
+                markStatic = EditorGUILayout.ToggleLeft(
+                    new GUIContent("Mark instance(s) as Static (for batching)",
+                        "Flags the instantiated prefab and its children as Static so Unity can " +
+                        "batch them, improving runtime/simulation performance."),
+                    markStatic);
+                EditorGUI.indentLevel--;
+            }
         }
 
         void DrawImportButton()
@@ -297,6 +308,7 @@ namespace CADImporter.Editor
                     {
                         var instance = (GameObject)PrefabUtility.InstantiatePrefab(main);
                         Undo.RegisterCreatedObjectUndo(instance, "Import CAD Model");
+                        if (markStatic) SetStaticRecursively(instance);
                     }
                 }
             }
@@ -310,6 +322,14 @@ namespace CADImporter.Editor
             lastReport = $"Imported {imported.Count}/{files.Count} file(s) into {targetFolder}."
                 + (failed.Count > 0 ? "\nFailed:\n  " + string.Join("\n  ", failed) : "");
             files.Clear();
+        }
+
+        // Flags the whole instantiated hierarchy as Static so Unity can batch it for faster rendering.
+        static void SetStaticRecursively(GameObject go)
+        {
+            GameObjectUtility.SetStaticEditorFlags(go, (StaticEditorFlags)~0);
+            foreach (Transform child in go.transform)
+                SetStaticRecursively(child.gameObject);
         }
 
         string ImportOne(string sourcePath)
