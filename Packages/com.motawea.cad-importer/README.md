@@ -154,6 +154,10 @@ com.motawea.cad-importer/
   CRS/latitude-longitude are kept on `CADModelInfo.geoOffset` / `.geoReference`, so several
   files from one project can be co-aligned. `IfcSpace` volumes import as translucent geometry
   (**Import Spaces**, on by default) or can be skipped entirely.
+- **IFC Debug window** (`Tools → CAD Importer IFC Debug`): recolour an imported model in the
+  scene by IFC type, storey, load-bearing or external/internal — with a colour-matched legend
+  showing per-category element and triangle statistics (click a row to select the elements).
+  Non-destructive: colours are transient overrides, nothing in the scene or assets changes.
 
 ## License
 

@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   georeference (projected CRS + map coordinates from `IfcMapConversion`, site
   latitude/longitude/elevation) is preserved on `CADModelInfo.geoReference`.
 
+- **IFC Debug window** (`Tools → CAD Importer IFC Debug`) — visual + statistical BIM
+  debugging of any imported model in the scene, driven by the `IfcElement` data. Recolour the
+  model **by IFC type**, **by storey**, **by load-bearing** or **by external/internal** (the
+  latter two read the imported property sets), with a colour-matched legend showing element
+  count, LOD0 triangle count and share per category; clicking a legend row selects those
+  elements in the Hierarchy. Colouring uses transient `MaterialPropertyBlock` overrides —
+  the scene, prefab and imported assets are never modified, and *Original* mode (or closing
+  the window) restores everything.
 - **Import Spaces toggle.** `IfcSpace` volumes (rooms/zones) still import as translucent
   geometry by default, but can now be skipped entirely (**IFC → Import Spaces** off) — the
   default of most BIM viewers. Excluded spaces are never even tessellated.

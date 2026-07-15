@@ -26,7 +26,7 @@ namespace CADImporter.Editor
         const string FolderPrefsKey = "CADImporter.TargetFolder";
 
         static readonly string[] SupportedExtensions =
-            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb", ".ifc" };
+            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb", ".ifc", ".ifczip" };
 
         readonly List<string> files = new List<string>();
         SettingsHolder holder;
