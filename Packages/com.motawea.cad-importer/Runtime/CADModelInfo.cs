@@ -17,5 +17,15 @@ namespace CADImporter
         public int totalTriangles;
         public int partCount;
         public string importedAt;
+
+        /// <summary>
+        /// World offset (Unity axes, metres) subtracted at import to bring a georeferenced
+        /// model to the origin. Zero when the source was not georeferenced. To co-align two
+        /// files from the same project, offset one by the difference of their geoOffsets.
+        /// </summary>
+        public Vector3 geoOffset;
+
+        /// <summary>Georeference of the source model (CRS, map coordinates, lat/long).</summary>
+        public string geoReference;
     }
 }

@@ -179,6 +179,17 @@ namespace CADImporter
         public string Name;
         public string SourcePath;
         public string Format;
+
+        /// <summary>
+        /// World offset subtracted at import to bring a georeferenced model to the origin,
+        /// already converted to Unity axes but in source length units (scaled at build time
+        /// like every position). Zero for non-georeferenced models. Add it back to recover
+        /// source-model coordinates; the difference of two files' offsets co-aligns them.
+        /// </summary>
+        public Vector3 GeoOffset;
+
+        /// <summary>Human-readable georeference (CRS name, map coords, lat/long); null if none.</summary>
+        public string GeoReference;
         public readonly CADNode Root = new CADNode { Name = "Root" };
         public readonly List<CADMaterialInfo> Materials = new List<CADMaterialInfo>();
 

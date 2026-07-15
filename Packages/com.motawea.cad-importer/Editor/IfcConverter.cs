@@ -134,6 +134,57 @@ def color_of(geo):
     except Exception:
         return None
 
+# A world offset beyond this (metres) is treated as georeferencing: real map coordinates
+# put geometry so far from the origin that float32 precision visibly jitters in engines.
+GEO_THRESHOLD = 1000.0
+
+def dms_to_deg(v):
+    # IFC compound plane angle: (deg, min, sec, millionth-sec), sign shared by all parts.
+    try:
+        parts = [float(x) for x in v]
+        if not parts:
+            return None
+        sign = -1.0 if any(p < 0 for p in parts) else 1.0
+        parts += [0.0] * (4 - len(parts))
+        return sign * (abs(parts[0]) + abs(parts[1]) / 60.0 + abs(parts[2]) / 3600.0
+                       + abs(parts[3]) / 3.6e9)
+    except Exception:
+        return None
+
+def collect_geo(f):
+    # Georeference metadata: site latitude/longitude and (IFC4+) the map conversion to a
+    # projected CRS. Kept as metadata only — geometry stays in local engineering coords.
+    geo = {{}}
+    try:
+        for site in f.by_type('IfcSite'):
+            la = dms_to_deg(getattr(site, 'RefLatitude', None) or ())
+            lo = dms_to_deg(getattr(site, 'RefLongitude', None) or ())
+            if la is not None and lo is not None:
+                geo['lat'] = la
+                geo['lon'] = lo
+            el = getattr(site, 'RefElevation', None)
+            if el is not None:
+                geo['elevation'] = float(el)
+            break
+    except Exception:
+        pass
+    try:
+        for mc in f.by_type('IfcMapConversion'):
+            geo['mapConversion'] = {{
+                'eastings': float(mc.Eastings), 'northings': float(mc.Northings),
+                'orthogonalHeight': float(mc.OrthogonalHeight),
+                'xAxisAbscissa': float(mc.XAxisAbscissa) if mc.XAxisAbscissa is not None else 1.0,
+                'xAxisOrdinate': float(mc.XAxisOrdinate) if mc.XAxisOrdinate is not None else 0.0,
+                'scale': float(mc.Scale) if mc.Scale is not None else 1.0,
+            }}
+            crs = getattr(mc, 'TargetCRS', None)
+            if crs is not None and getattr(crs, 'Name', None):
+                geo['crs'] = crs.Name
+            break
+    except Exception:
+        pass  # IfcMapConversion does not exist before IFC4
+    return geo
+
 def collect_props(elem):
     # Property sets + quantities, flattened to 'PsetName.PropName' -> string. get_psets
     # already merges type-level psets into occurrences (BIM authoring convention).
@@ -230,6 +281,7 @@ def main():
     prog(0.82, 'tessellated %d product(s) with geometry' % len(tess))
 
     counter = [0]
+    anchor = [None]  # world translation of the first meshed element (metres)
 
     def world_matrix(elem):
         pl = getattr(elem, 'ObjectPlacement', None)
@@ -257,6 +309,8 @@ def main():
         rec = tess.get(elem.id())
         if rec is not None:
             idx, color = rec
+            if anchor[0] is None:
+                anchor[0] = [float(W[0, 3]), float(W[1, 3]), float(W[2, 3])]
             counter[0] += 1
             node['mesh'] = idx
             if color is not None:
@@ -281,6 +335,30 @@ def main():
         if node is not None:
             roots.append(node)
 
+    # Georeferenced models place the site at real map coordinates — km or thousands of km
+    # from the origin, where float32 precision visibly jitters. Move the model to the origin
+    # by shifting the roots and record the subtracted offset so multiple files from the same
+    # project can still be co-aligned. Only the spatial-tree path carries placements, so the
+    # flat fallback below is exempt.
+    geo = collect_geo(f)
+    if roots:
+        off = None
+        for site in f.by_type('IfcSite'):
+            if getattr(site, 'ObjectPlacement', None) is not None:
+                t = world_matrix(site)[:3, 3]
+                if float(np.linalg.norm(t)) > GEO_THRESHOLD:
+                    off = [float(t[0]), float(t[1]), float(t[2])]
+                break
+        a = anchor[0]
+        if off is None and a is not None and math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]) > GEO_THRESHOLD:
+            off = a
+        if off is not None:
+            for r in roots:
+                r['pos'] = [r['pos'][0] - off[0], r['pos'][1] - off[1], r['pos'][2] - off[2]]
+            geo['offsetApplied'] = off
+            prog(0.99, 'georeferenced: moved %.0f m world offset to origin'
+                 % math.sqrt(off[0]*off[0]+off[1]*off[1]+off[2]*off[2]))
+
     if not roots:
         # No usable spatial tree: emit every geometric product at the origin.
         prog(0.9, 'no spatial tree; emitting products flat...')
@@ -298,6 +376,8 @@ def main():
 
     schema = str(getattr(f, 'schema_identifier', None) or f.schema)
     manifest = {{'unit': 'm', 'schema': schema, 'worldBBox': None, 'nodes': roots}}
+    if geo:
+        manifest['geo'] = geo
     with open(os.path.join(OUT, 'manifest.json'), 'w') as mf:
         json.dump(manifest, mf)
     prog(1.0, 'done: %d mesh part(s)' % counter[0])

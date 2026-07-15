@@ -91,6 +91,8 @@ namespace CADImporter.Editor
                 info.totalTriangles = c.TotalTriangles;
                 info.partCount = c.PartCount;
                 info.importedAt = DateTime.UtcNow.ToString("u");
+                info.geoOffset = model.GeoOffset * c.Scale;
+                info.geoReference = model.GeoReference;
 
                 if (settings.markStatic)
                     SetStaticRecursively(root);

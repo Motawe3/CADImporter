@@ -16,7 +16,7 @@ namespace CADImporter.Editor
     // .ifcxml is deliberately NOT registered: the IfcOpenShell build FreeCAD currently bundles
     // (0.8.x) stubs out its ifcXML parser ("IFC-XML import temporarily disabled"), so claiming
     // the extension would only manufacture guaranteed import errors.
-    [ScriptedImporter(3, new[] { "ifc", "ifczip" })]
+    [ScriptedImporter(4, new[] { "ifc", "ifczip" })]
     public class IfcScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = CreateDefaults();
@@ -80,6 +80,8 @@ namespace CADImporter.Editor
                     model.Format = $"IFC ({schema})";
                     Debug.Log($"CAD Importer: '{Path.GetFileName(ctx.assetPath)}' schema {schema}.");
                 }
+
+                ApplyGeo(root["geo"], model, s.sourceOrientation, ctx.assetPath);
 
                 foreach (var mn in root["nodes"].Items)
                 {
@@ -181,6 +183,41 @@ namespace CADImporter.Editor
             }
 
             return node.Mesh == null && node.Children.Count == 0 ? null : node;
+        }
+
+        /// <summary>
+        /// Applies the manifest's georeference block: the world offset the converter subtracted
+        /// to bring a far-from-origin model to the origin (converted here to Unity axes and
+        /// recorded on <see cref="CADModelInfo.geoOffset"/>), plus a human-readable summary of
+        /// the source CRS / map coordinates / latitude-longitude.
+        /// </summary>
+        static void ApplyGeo(JNode geo, CADModel model, SourceOrientation orientation, string assetPath)
+        {
+            if (!geo.IsObject) return;
+
+            var off = geo["offsetApplied"].AsFloatArray();
+            if (off != null && off.Length == 3)
+            {
+                var p = new Vector3(off[0], off[1], off[2]);
+                var r = Quaternion.identity;
+                var sc = Vector3.one;
+                MeshProcessor.ConvertPlacement(orientation, ref p, ref r, ref sc);
+                model.GeoOffset = p;
+                Debug.Log($"CAD Importer: '{Path.GetFileName(assetPath)}' is georeferenced " +
+                          $"{p.magnitude:F0} m from the origin; the model was moved to the origin " +
+                          "and the offset recorded on CADModelInfo.geoOffset.");
+            }
+
+            var parts = new List<string>();
+            string crs = geo["crs"].AsString(null);
+            if (crs != null) parts.Add(crs);
+            var mc = geo["mapConversion"];
+            if (mc.IsObject)
+                parts.Add($"E {mc["eastings"].AsDouble():F2}, N {mc["northings"].AsDouble():F2}, " +
+                          $"H {mc["orthogonalHeight"].AsDouble():F2}");
+            if (geo.Has("lat") && geo.Has("lon"))
+                parts.Add($"lat {geo["lat"].AsDouble():F6}, lon {geo["lon"].AsDouble():F6}");
+            if (parts.Count > 0) model.GeoReference = string.Join(" — ", parts);
         }
 
         /// <summary>

@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IfcPile`, `IfcEarthworksFill`, …) now get sensible default finishes (asphalt, steel,
   concrete, soil) instead of the generic grey.
 
+- **Georeferenced IFC models import at the origin.** Models placed at real map coordinates
+  (site offsets beyond 1 km) used to import kilometres from the Unity origin, where float32
+  precision visibly jitters. The importer now detects the offset (site placement, or the first
+  element for baked coordinates), moves the model to the origin, and records what it
+  subtracted on `CADModelInfo.geoOffset` — so several files from the same project can still be
+  co-aligned by offsetting each by the difference of their recorded offsets. The source
+  georeference (projected CRS + map coordinates from `IfcMapConversion`, site
+  latitude/longitude/elevation) is preserved on `CADModelInfo.geoReference`.
+
 ### Changed
 - **Lower memory and faster STL writing in the IFC converter.** Each element's STL is written
   the moment it is tessellated instead of holding the entire building's triangle lists in
