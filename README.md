@@ -35,18 +35,34 @@ STEP/IGES/IFC import additionally needs a local [FreeCAD](https://www.freecad.or
 
 ## Highlights
 
-- **Drag & drop** `.stl` / `.ply` / `.gltf` / `.glb` / `.step` / `.iges` / `.ifc` files —
-  they import like any model, producing a prefab with part hierarchy, LODGroups, colliders,
-  materials and metadata.
+- **Drag & drop** `.stl` / `.ply` / `.gltf` / `.glb` / `.step` / `.iges` / `.ifc` /
+  `.ifczip` files — they import like any model, producing a prefab with part hierarchy,
+  LODGroups, colliders, materials and metadata.
 - **Batch window** (`Tools → CAD Importer`) for importing many external files at once, with a
-  determinate progress bar (part *i* of *N*) on long conversions.
+  determinate progress bar (part *i* of *N*) on long conversions and settings sections that
+  adapt to the queued formats.
+
+  <img src="Packages/com.motawea.cad-importer/Documentation~/images/cad-importer-window.jpg" width="520" alt="CAD Importer batch window">
+
 - **Hierarchy & pivots preserved** — STEP/IGES assemblies, glTF node rigs, and IFC spatial
   structure import as nested GameObjects at their correct pivots (robot joints, building
   storeys), so links map cleanly to `ArticulationBody` / simulation logic.
 - **glTF 2.0 / GLB** with full metallic-roughness PBR — base colour, metallic-roughness,
   normal, occlusion and emissive maps, alpha modes and double-sided materials.
 - **IFC (BIM)** — spatial hierarchy plus a professional colour-by-material/category palette
-  (glass auto-translucent, steel metallic, concrete, timber, charcoal roofs, MEP…).
+  (glass auto-translucent, steel metallic, concrete, timber, charcoal roofs, MEP, IFC4.3
+  infrastructure…). Every element carries its **BIM identity** (`IfcElement` component: IFC
+  type, GlobalId, property sets), the schema version is recorded, **georeferenced models
+  import at the origin** with the map offset preserved for multi-file alignment, and
+  `IfcSpace` volumes are optional.
+- **IFC Debug window** (`Tools → CAD Importer IFC Debug`) — recolour a model by IFC type,
+  storey, load-bearing or external/internal, with a colour-matched legend of per-category
+  element/triangle statistics, visibility eyes (Alt-click to solo), search, and
+  click-to-select. Transient editor overrides only — nothing in the scene or assets changes.
+  See the [quick guide](Packages/com.motawea.cad-importer/README.md#ifc-debug-window--visual--statistical-bim-inspection).
+
+  <img src="Packages/com.motawea.cad-importer/Documentation~/images/ifc-debug-window.jpg" width="440" alt="IFC Debug window — model coloured by IFC type">
+
 - **Runtime import for digital twins**:
 
 ```csharp

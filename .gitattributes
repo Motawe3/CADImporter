@@ -1,4 +1,4 @@
-# Unity .gitattributes Template
+﻿# Unity .gitattributes Template
 # Source: https://github.com/gitattributes/gitattributes/blob/master/Unity.gitattributes
 # Last synced: 2026-02-04
 # License: MIT
@@ -162,6 +162,7 @@ Packages/packages-lock.json linguist-generated
 # Package documentation and samples must be plain git: UPM git-URL installs use
 # the consumer's git, and without git-lfs they would receive pointer files.
 Packages/com.motawea.cad-importer/Documentation~/*.pdf -filter -diff -merge -text
+Packages/com.motawea.cad-importer/Documentation~/images/*.jpg -filter -diff -merge -text
 Packages/com.motawea.cad-importer/Samples~/**/*.hdr -filter -diff -merge -text
 
 # ETC

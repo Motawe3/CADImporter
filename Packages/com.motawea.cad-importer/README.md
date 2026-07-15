@@ -36,10 +36,15 @@ Or add it to `Packages/manifest.json` directly:
 1. **Drag & drop**: drop an `.stl` or `.ply` file anywhere under `Assets/`. It imports as a
    prefab with LODs, colliders and materials. Select the asset to tweak import settings.
 2. **Batch import**: `Tools → CAD Importer` — queue external files, tune settings once,
-   import into a target folder, optionally place instances in the open scene.
+   import into a target folder, optionally place instances in the open scene. The window
+   shows only the settings the queued formats actually use.
+
+   <img src="Documentation~/images/cad-importer-window.jpg" width="560" alt="CAD Importer batch window">
+
 3. **STEP/IGES/IFC**: install FreeCAD (free). The importer auto-detects `FreeCADCmd.exe`; if
    it doesn't, set the path in `Tools → CAD Importer`. STEP/IGES parts and IFC building
    elements each become a named child GameObject, nested by assembly / spatial structure.
+   Compressed `.ifczip` archives import like plain `.ifc`.
 4. **Runtime (digital twins)** — import the **CAD Importer Demo** sample from the Package
    Manager (requires URP) for a ready-made scene, or just add the `DemoCadRuntimeImporter`
    component to any GameObject and press Play:
@@ -58,6 +63,43 @@ GameObject robot = await CADRuntimeImporter.ImportAsync(
         convexColliders = true // needed on dynamic rigidbodies
     });
 ```
+
+## IFC Debug window — visual & statistical BIM inspection
+
+`Tools → CAD Importer IFC Debug` recolours an imported model in the scene by its BIM data
+and breaks it down statistically, using the `IfcElement` components the importer attaches
+(IFC type, GlobalId, property sets).
+
+<img src="Documentation~/images/ifc-debug-window.jpg" width="480" alt="IFC Debug window — Schependomlaan coloured by IFC type">
+
+**Using it:**
+
+1. Import an IFC and put an instance in the open scene (the batch window's *Add imported
+   model(s) to the open scene* does this for you).
+2. Open `Tools → CAD Importer IFC Debug`. With one model in the scene it is picked
+   automatically; otherwise choose it from the **Model** dropdown or select any part of it
+   in the Hierarchy and press **From Selection**.
+3. Pick a **Draw mode**:
+   - **By Type** — one colour per IFC entity type (walls, slabs, windows, MEP…).
+   - **By Storey** — one colour per building storey the element belongs to.
+   - **By Load-bearing** / **By External** — classified from the imported property sets
+     (`*.LoadBearing`, `*.IsExternal`): structural vs non-structural, envelope vs interior.
+   - **Original** — restores the imported materials.
+4. Read the **legend**: each row shows the category's colour swatch, element count, LOD0
+   triangle count and its share of the model — the fastest way to answer "what is eating my
+   triangle budget".
+5. Work the legend:
+   - **Eye icon** hides/shows a category in the Scene view (**Alt-click to solo** it);
+     **Show All** brings everything back. Hiding a few large categories is the quickest way
+     to look inside a building.
+   - **Click** a row to select its elements in the Hierarchy; **double-click** to frame them
+     in the Scene view.
+   - The **search field** filters the legend on models with many categories.
+
+Everything the window does is transient editor state — colours are `MaterialPropertyBlock`
+overrides and visibility uses the editor's scene-visibility system, so the scene, prefab and
+imported assets are never modified. Closing the window (or picking *Original*) restores the
+model exactly.
 
 ## Pipeline & performance decisions
 
@@ -110,15 +152,16 @@ com.motawea.cad-importer/
 │   ├── CADRuntimeImporter.cs
 │   └── CADModelInfo.cs metadata component on every imported root
 ├── Editor/             asmdef: CADImporter.Editor
-│   ├── Stl/Ply/StepScriptedImporter.cs
+│   ├── Stl/Ply/Gltf/Step/IfcScriptedImporter.cs
 │   ├── CADAssetBuilder.cs   prefab/LOD/collider/material assembly
-│   ├── StepConverter.cs     FreeCAD bridge
-│   └── CADImporterWindow.cs Tools → CAD Importer
+│   ├── StepConverter.cs     FreeCAD bridge (+ IfcConverter.cs for IFC)
+│   ├── CADImporterWindow.cs Tools → CAD Importer
+│   └── IfcDebugView.cs      Tools → CAD Importer IFC Debug (BIM visualizer)
 ├── Tests/Editor/       EditMode test suite (add "com.motawea.cad-importer" to
 │                       "testables" in your manifest to run them)
 ├── Samples~/           "CAD Importer Demo" — runtime import scene (import via
 │                       Package Manager → Samples; requires URP)
-└── Documentation~/     full manual and quick-start PDFs
+└── Documentation~/     full manual and quick-start PDFs, README screenshots
 ```
 
 ## Notes & limitations
@@ -154,12 +197,8 @@ com.motawea.cad-importer/
   CRS/latitude-longitude are kept on `CADModelInfo.geoOffset` / `.geoReference`, so several
   files from one project can be co-aligned. `IfcSpace` volumes import as translucent geometry
   (**Import Spaces**, on by default) or can be skipped entirely.
-- **IFC Debug window** (`Tools → CAD Importer IFC Debug`): recolour an imported model in the
-  scene by IFC type, storey, load-bearing or external/internal — with a colour-matched legend
-  showing per-category element and triangle statistics. Per-category **visibility eyes**
-  (Alt-click to solo), search filter, click a row to select its elements, double-click to
-  frame them. Non-destructive: colours and visibility are transient editor state; nothing in
-  the scene or assets changes.
+- BIM models can be inspected visually and statistically with the
+  [IFC Debug window](#ifc-debug-window--visual--statistical-bim-inspection).
 
 ## License
 
