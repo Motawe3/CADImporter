@@ -4,7 +4,7 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] - 2026-07-15
 
 ### Added
 - **BIM identity and property sets on imported IFC elements.** Every imported IFC element
@@ -81,6 +81,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archives could be dragged onto the window but not selected through the file dialog. The
   window's accepted extensions now come from a single table shared by the drop target, the
   file picker and the settings gating, so the two can no longer drift apart.
+
+## [1.5.0] - 2026-07-09
+
+### Notes
+- Tag-only release: `v1.5.0` is where the **multi-core import processing** documented under
+  1.4.0's *Changed* section actually shipped (the `v1.4.0` tag predates that commit). The
+  package manifest inside this tag still reports 1.4.0.
 
 ## [1.4.0] - 2026-07-09
 
