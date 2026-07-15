@@ -82,11 +82,6 @@ namespace CADImporter.Editor
         public float stepLinearDeflection = 0.1f;
         [Tooltip("Tessellation angular tolerance in degrees. Lower = finer mesh."), Range(5f, 45f)]
         public float stepAngularDeflection = 20f;
-        [Tooltip("Give up on FreeCAD conversion (STEP/IGES/IFC) after this many seconds. Large " +
-                 "assemblies and buildings (hundreds of parts / 100+ MB) can take several minutes. " +
-                 "Set 0 for no limit. Progress is logged to the Console so you can tell a slow job " +
-                 "from a hung one.")]
-        public int stepTimeoutSeconds = 900;
 
         [Header("IFC / BIM (requires FreeCAD's IfcOpenShell)")]
         [Tooltip("IFC tessellation chord tolerance in metres (absolute). Lower = finer curved " +
@@ -100,6 +95,15 @@ namespace CADImporter.Editor
         [Tooltip("Import IfcSpace volumes (rooms/zones) as translucent geometry. Useful for " +
                  "space-analysis workflows; turn off to skip them entirely, as most viewers do.")]
         public bool ifcImportSpaces = true;
+
+        // Grouped apart from the STEP options despite the field name (kept for serialization
+        // compatibility): STEP, IGES and IFC all shell out to FreeCAD and share this budget.
+        [Header("FreeCAD Conversion (STEP / IGES / IFC)")]
+        [Tooltip("Give up on FreeCAD conversion (STEP/IGES/IFC) after this many seconds. Large " +
+                 "assemblies and buildings (hundreds of parts / 100+ MB) can take several minutes. " +
+                 "Set 0 for no limit. Progress is logged to the Console so you can tell a slow job " +
+                 "from a hung one.")]
+        public int stepTimeoutSeconds = 900;
 
         public CADProcessOptions ToProcessOptions() => new CADProcessOptions
         {

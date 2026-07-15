@@ -43,16 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elements in the Hierarchy. Colouring uses transient `MaterialPropertyBlock` overrides —
   the scene, prefab and imported assets are never modified, and *Original* mode (or closing
   the window) restores everything.
-  - **X-Ray mode with a transparency slider** — see-through ghost materials in the category
-    colours, so occluded structure (columns behind walls, pipes in shafts) stays visible.
-    Ghost materials are temporary swaps with a guarded lifecycle: originals restore on mode
-    change, window close, scene save, play mode entry and domain reload, so they can never
-    leak into a saved scene. The slider updates transparency live.
   - **Per-category visibility eyes** in the legend (Alt-click to solo a category), built on
     the editor's scene-visibility system (the Hierarchy "eye"), plus a *Show All* button —
     nothing is deactivated in the scene itself.
   - QoL: legend search filter, double-click a row to frame its elements in the Scene view,
-    single-click to select, and the X-ray transparency persists between sessions.
+    single-click to select.
 - **Import Spaces toggle.** `IfcSpace` volumes (rooms/zones) still import as translucent
   geometry by default, but can now be skipped entirely (**IFC → Import Spaces** off) — the
   default of most BIM viewers. Excluded spaces are never even tessellated.

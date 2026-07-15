@@ -25,8 +25,49 @@ namespace CADImporter.Editor
         const string SettingsPrefsKey = "CADImporter.WindowSettings";
         const string FolderPrefsKey = "CADImporter.TargetFolder";
 
-        static readonly string[] SupportedExtensions =
-            { ".stl", ".ply", ".obj", ".step", ".stp", ".iges", ".igs", ".gltf", ".glb", ".ifc", ".ifczip" };
+        /// <summary>
+        /// Which importer a file lands on. The window shows the settings the queued formats
+        /// actually read and hides the rest, so STEP and IFC options only appear once such a
+        /// file is queued.
+        /// </summary>
+        [Flags]
+        enum CadFormat
+        {
+            None = 0,
+            Stl = 1 << 0,
+            Ply = 1 << 1,
+            Obj = 1 << 2, // Unity's native model importer — none of these settings reach it
+            Gltf = 1 << 3,
+            Step = 1 << 4, // STEP and IGES, both via StepScriptedImporter
+            Ifc = 1 << 5,
+
+            All = Stl | Ply | Obj | Gltf | Step | Ifc,
+            /// <summary>Formats built by CADAssetBuilder, i.e. the ones CADImportSettings reaches at all.</summary>
+            Processed = Stl | Ply | Gltf | Step | Ifc,
+            /// <summary>Formats that honour sourceUnit/sourceOrientation; glTF and IFC pin their own.</summary>
+            Orientable = Stl | Ply | Step,
+            /// <summary>Formats tessellated by FreeCAD.</summary>
+            FreeCad = Step | Ifc
+        }
+
+        // Single source of truth for what the window accepts: the drop filter, the file-picker
+        // filter and the settings gating all read from here.
+        static readonly (string Ext, CadFormat Format)[] Formats =
+        {
+            (".stl", CadFormat.Stl),
+            (".ply", CadFormat.Ply),
+            (".obj", CadFormat.Obj),
+            (".gltf", CadFormat.Gltf),
+            (".glb", CadFormat.Gltf),
+            (".step", CadFormat.Step),
+            (".stp", CadFormat.Step),
+            (".iges", CadFormat.Step),
+            (".igs", CadFormat.Step),
+            (".ifc", CadFormat.Ifc),
+            (".ifczip", CadFormat.Ifc)
+        };
+
+        static readonly string PickerFilter = string.Join(",", Formats.Select(f => f.Ext.Substring(1)));
 
         readonly List<string> files = new List<string>();
         SettingsHolder holder;
@@ -71,15 +112,41 @@ namespace CADImporter.Editor
             EditorPrefs.SetString(FolderPrefsKey, targetFolder);
         }
 
+        static CadFormat FormatFor(string path)
+        {
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            foreach (var f in Formats)
+                if (f.Ext == ext) return f.Format;
+            return CadFormat.None;
+        }
+
+        /// <summary>
+        /// The formats currently queued. An empty queue reports every format so the window shows
+        /// its full surface — there is nothing yet to narrow it down to, and FreeCAD can still be
+        /// configured ahead of time.
+        /// </summary>
+        CadFormat QueuedFormats()
+        {
+            if (files.Count == 0) return CadFormat.All;
+            CadFormat mask = CadFormat.None;
+            foreach (var f in files) mask |= FormatFor(f);
+            return mask;
+        }
+
         void OnGUI()
         {
             scroll = EditorGUILayout.BeginScrollView(scroll);
 
             DrawFileList();
+            var queued = QueuedFormats(); // after DrawFileList: the queue changes as it is drawn
+
             EditorGUILayout.Space(6);
-            DrawSettings();
-            EditorGUILayout.Space(6);
-            DrawStepConverterStatus();
+            DrawSettings(queued);
+            if ((queued & CadFormat.FreeCad) != 0)
+            {
+                EditorGUILayout.Space(6);
+                DrawFreeCadStatus(queued);
+            }
             EditorGUILayout.Space(6);
             DrawOutputOptions();
             EditorGUILayout.Space(10);
@@ -117,8 +184,7 @@ namespace CADImporter.Editor
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Add Files…"))
             {
-                string picked = EditorUtility.OpenFilePanel("Select CAD file",
-                    "", "stl,ply,obj,step,stp,iges,igs,gltf,glb,ifc");
+                string picked = EditorUtility.OpenFilePanel("Select CAD file", "", PickerFilter);
                 if (!string.IsNullOrEmpty(picked) && !files.Contains(picked))
                     files.Add(picked);
             }
@@ -137,8 +203,7 @@ namespace CADImporter.Editor
 
             if (evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform)
             {
-                bool any = DragAndDrop.paths.Any(p =>
-                    SupportedExtensions.Contains(Path.GetExtension(p).ToLowerInvariant()));
+                bool any = DragAndDrop.paths.Any(p => FormatFor(p) != CadFormat.None);
                 DragAndDrop.visualMode = any ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
 
                 if (evt.type == EventType.DragPerform && any)
@@ -146,8 +211,7 @@ namespace CADImporter.Editor
                     DragAndDrop.AcceptDrag();
                     foreach (var p in DragAndDrop.paths)
                     {
-                        if (SupportedExtensions.Contains(Path.GetExtension(p).ToLowerInvariant()) &&
-                            !files.Contains(p))
+                        if (FormatFor(p) != CadFormat.None && !files.Contains(p))
                             files.Add(p);
                     }
                 }
@@ -155,18 +219,78 @@ namespace CADImporter.Editor
             }
         }
 
-        void DrawSettings()
+        void DrawSettings(CadFormat queued)
         {
             EditorGUILayout.LabelField("Import Settings", EditorStyles.boldLabel);
+
+            if ((queued & CadFormat.Processed) == 0)
+            {
+                // Nothing queued that reads these settings at all (an OBJ-only queue).
+                EditorGUILayout.HelpBox(
+                    ".obj files are handled by Unity's native model importer, which ignores these " +
+                    "settings. Import them, then tune each asset's own import settings in the Inspector.",
+                    MessageType.Info);
+                return;
+            }
+
+            // Mixed queue. The files.Count guard matters: an empty queue reports every format,
+            // including Obj, and there is nothing to warn about then.
+            if (files.Count > 0 && (queued & CadFormat.Obj) != 0)
+                EditorGUILayout.HelpBox(
+                    "The queued .obj file(s) go to Unity's native model importer and ignore these " +
+                    "settings; the other queued files use them.", MessageType.Info);
+
+            // glTF and IFC pin their own unit and axis convention on import, so with only those
+            // queued the two fields are shown disabled rather than hidden — the header they carry
+            // would go with them, and a silently ignored value is worse than a greyed-out one.
+            bool unitsFixed = (queued & CadFormat.Orientable) == 0;
+
             serializedSettings.Update();
             var prop = serializedSettings.FindProperty("settings");
             EditorGUI.BeginChangeCheck();
             foreach (SerializedProperty child in GetChildren(prop))
-                EditorGUILayout.PropertyField(child, true);
+            {
+                var applies = AppliesTo(child.name);
+                bool orientation = applies == CadFormat.Orientable;
+                if (!orientation && (applies & queued) == 0) continue;
+
+                using (new EditorGUI.DisabledScope(orientation && unitsFixed))
+                    EditorGUILayout.PropertyField(child, true);
+
+                if (unitsFixed && child.name == nameof(CADImportSettings.sourceOrientation))
+                    EditorGUILayout.HelpBox(
+                        "Fixed by the queued format(s): glTF/GLB is metres, Y-up right-handed and " +
+                        "IFC is metres, Z-up right-handed by definition, so both values are " +
+                        "overridden on import.", MessageType.None);
+            }
             if (EditorGUI.EndChangeCheck())
             {
                 serializedSettings.ApplyModifiedPropertiesWithoutUndo();
                 PersistSettings();
+            }
+        }
+
+        // Which formats read a given settings field. Fields no queued format reads are hidden —
+        // and since a [Header] renders with the first field under it, hiding a whole group takes
+        // its header with it.
+        static CadFormat AppliesTo(string field)
+        {
+            switch (field)
+            {
+                case nameof(CADImportSettings.sourceUnit):
+                case nameof(CADImportSettings.sourceOrientation):
+                    return CadFormat.Orientable;
+                case nameof(CADImportSettings.stepLinearDeflection):
+                case nameof(CADImportSettings.stepAngularDeflection):
+                    return CadFormat.Step;
+                case nameof(CADImportSettings.ifcLinearDeflection):
+                case nameof(CADImportSettings.ifcImportProperties):
+                case nameof(CADImportSettings.ifcImportSpaces):
+                    return CadFormat.Ifc;
+                case nameof(CADImportSettings.stepTimeoutSeconds):
+                    return CadFormat.FreeCad;
+                default:
+                    return CadFormat.Processed;
             }
         }
 
@@ -182,9 +306,17 @@ namespace CADImporter.Editor
             }
         }
 
-        void DrawStepConverterStatus()
+        // Only drawn when a FreeCAD-backed format is queued (or the queue is empty, so it can be
+        // set up ahead of time); the heading and warning name just the formats in play.
+        void DrawFreeCadStatus(CadFormat queued)
         {
-            EditorGUILayout.LabelField("STEP / IGES / IFC Converter (FreeCAD)", EditorStyles.boldLabel);
+            bool step = (queued & CadFormat.Step) != 0;
+            bool ifc = (queued & CadFormat.Ifc) != 0;
+            string title = step && ifc ? "STEP / IGES / IFC" : step ? "STEP / IGES" : "IFC";
+            string needs = step && ifc ? "STEP, IGES and IFC" : step ? "STEP and IGES" : "IFC";
+            string engine = ifc ? "Open CASCADE + the bundled IfcOpenShell" : "Open CASCADE";
+
+            EditorGUILayout.LabelField($"{title} Converter (FreeCAD)", EditorStyles.boldLabel);
             string path = StepConverter.ConverterPath;
             bool valid = !string.IsNullOrEmpty(path) && File.Exists(path);
 
@@ -195,9 +327,8 @@ namespace CADImporter.Editor
             else
             {
                 EditorGUILayout.HelpBox(
-                    "FreeCAD not configured. STL, PLY, OBJ and glTF/GLB import work without it; " +
-                    "STEP, IGES and IFC files need FreeCAD (Open CASCADE + the bundled IfcOpenShell) " +
-                    "for tessellation (free, freecad.org).",
+                    $"FreeCAD not configured. {needs} files need FreeCAD ({engine}) for " +
+                    "tessellation (free, freecad.org).",
                     MessageType.Warning);
 
                 // Only shown while FreeCAD is missing: a shortcut to grab it.
