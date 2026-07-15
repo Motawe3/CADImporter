@@ -113,6 +113,9 @@ namespace CADImporter
         public Quaternion LocalRotation = Quaternion.identity;
         public Vector3 LocalScale = Vector3.one;
         public bool HasLocalTransform;
+
+        /// <summary>BIM identity (IFC type, GlobalId, property sets); null on non-BIM formats.</summary>
+        public IfcElementData Ifc;
     }
 
     /// <summary>How a material's alpha is interpreted (glTF alphaMode).</summary>

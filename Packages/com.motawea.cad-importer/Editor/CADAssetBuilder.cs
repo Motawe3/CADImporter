@@ -228,6 +228,15 @@ namespace CADImporter.Editor
                 go.transform.localScale = node.LocalScale;
             }
 
+            if (node.Ifc != null)
+            {
+                var ifc = go.AddComponent<IfcElement>();
+                ifc.ifcType = node.Ifc.IfcType;
+                ifc.globalId = node.Ifc.GlobalId;
+                if (node.Ifc.Properties != null)
+                    ifc.properties = node.Ifc.Properties;
+            }
+
             var data = node.Mesh;
             if (data != null && data.TriangleCount > 0)
             {

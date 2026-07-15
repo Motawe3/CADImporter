@@ -13,7 +13,7 @@ namespace CADImporter.Editor
     /// becomes a child GameObject with its own local pivot, and every element keeps its IFC surface
     /// colour, so a building imports as a navigable, coloured hierarchy ready for realtime rendering.
     /// </summary>
-    [ScriptedImporter(1, new[] { "ifc" })]
+    [ScriptedImporter(2, new[] { "ifc" })]
     public class IfcScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = CreateDefaults();
@@ -52,8 +52,8 @@ namespace CADImporter.Editor
             {
                 string src = Path.GetFullPath(ctx.assetPath);
                 if (!IfcConverter.ConvertToStl(converter, src, tempDir,
-                        s.ifcLinearDeflection, s.stepTimeoutSeconds, Path.GetFileName(ctx.assetPath),
-                        out string error))
+                        s.ifcLinearDeflection, s.ifcImportProperties, s.stepTimeoutSeconds,
+                        Path.GetFileName(ctx.assetPath), out string error))
                 {
                     ctx.LogImportError($"CAD Importer: IFC conversion of '{ctx.assetPath}' failed. {error}");
                     CADAssetBuilder.BuildPlaceholder(ctx, name);
@@ -105,7 +105,7 @@ namespace CADImporter.Editor
         static CADNode BuildIfcNode(JNode mn, string dir, Dictionary<string, CADModel> parts,
             SourceOrientation orientation, CADModel model, HashSet<string> palette)
         {
-            var node = new CADNode { Name = mn["name"].AsString("Element") };
+            var node = new CADNode { Name = mn["name"].AsString("Element"), Ifc = ParseIdentity(mn) };
 
             var pos = mn["pos"].AsFloatArray();
             var quat = mn["quat"].AsFloatArray();
@@ -167,6 +167,31 @@ namespace CADImporter.Editor
             }
 
             return node.Mesh == null && node.Children.Count == 0 ? null : node;
+        }
+
+        /// <summary>
+        /// BIM identity from a manifest node — IFC type, GlobalId and (when exported) the
+        /// flattened property sets. The asset builder turns this into an <see cref="IfcElement"/>
+        /// component on the element's GameObject. Null when the node carries no identity.
+        /// </summary>
+        static IfcElementData ParseIdentity(JNode mn)
+        {
+            string ifcType = mn["ifcType"].AsString(null);
+            string guid = mn["guid"].AsString(null);
+            if (ifcType == null && guid == null) return null;
+
+            var data = new IfcElementData { IfcType = ifcType, GlobalId = guid };
+            var props = mn["props"];
+            if (props.IsObject)
+            {
+                data.Properties = new List<IfcProperty>(props.Count);
+                foreach (var kv in props.Members)
+                {
+                    string v = kv.Value.AsString(null);
+                    if (v != null) data.Properties.Add(new IfcProperty(kv.Key, v));
+                }
+            }
+            return data;
         }
 
         static void AssignMaterial(CADMeshData mesh, string matName)

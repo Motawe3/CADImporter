@@ -92,6 +92,11 @@ namespace CADImporter.Editor
         [Tooltip("IFC tessellation chord tolerance in metres (absolute). Lower = finer curved " +
                  "surfaces and more triangles. 0.01 (1 cm) suits most building models.")]
         public float ifcLinearDeflection = 0.01f;
+        [Tooltip("Attach an IfcElement component to every imported element, carrying its IFC " +
+                 "property sets (Psets/quantities) for digital-twin and BIM tooling. The IFC type " +
+                 "and GlobalId are always kept; this adds the full property data, which grows " +
+                 "import time and asset size on very large models.")]
+        public bool ifcImportProperties = true;
 
         public CADProcessOptions ToProcessOptions() => new CADProcessOptions
         {

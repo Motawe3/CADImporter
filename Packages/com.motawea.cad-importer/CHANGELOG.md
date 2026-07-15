@@ -4,6 +4,18 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **BIM identity and property sets on imported IFC elements.** Every imported IFC element
+  GameObject now carries an `IfcElement` component with its IFC entity type (e.g.
+  `IfcWallStandardCase`), its stable **GlobalId** (the key for mapping scene objects back to
+  the source model in issue tracking / BCF / dashboard workflows), and — when **Import
+  Properties** is enabled (default) — the element's **property sets and quantities**,
+  flattened as `Pset_WallCommon.FireRating` → value pairs and queryable via
+  `IfcElement.GetProperty`. Type-level psets are merged into occurrences per BIM convention.
+  Disable **IFC → Import Properties** to keep only type + GlobalId on very large models.
+
 ## [1.4.0] - 2026-07-09
 
 ### Added

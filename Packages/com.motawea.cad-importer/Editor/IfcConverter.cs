@@ -19,12 +19,14 @@ namespace CADImporter.Editor
         /// <paramref name="linearDeflectionMeters"/> is the tessellation chord tolerance.
         /// </summary>
         public static bool ConvertToStl(string converterExe, string sourceFile, string outputDir,
-            float linearDeflectionMeters, int timeoutSeconds, string label, out string error)
+            float linearDeflectionMeters, bool importProperties, int timeoutSeconds, string label,
+            out string error)
         {
             error = null;
             Directory.CreateDirectory(outputDir);
             string scriptPath = Path.Combine(outputDir, "_ifc.py");
-            File.WriteAllText(scriptPath, BuildScript(sourceFile, outputDir, linearDeflectionMeters));
+            File.WriteAllText(scriptPath,
+                BuildScript(sourceFile, outputDir, linearDeflectionMeters, importProperties));
 
             if (!StepConverter.RunFreeCadScript(converterExe, scriptPath, timeoutSeconds, label, out _, out error))
                 return false;
@@ -37,10 +39,12 @@ namespace CADImporter.Editor
             return true;
         }
 
-        static string BuildScript(string src, string outDir, float linearDeflectionMeters)
+        static string BuildScript(string src, string outDir, float linearDeflectionMeters,
+            bool importProperties)
         {
             var inv = CultureInfo.InvariantCulture;
             string lin = Math.Max(linearDeflectionMeters, 0.0001f).ToString(inv);
+            string psets = importProperties ? "1" : "0";
 
             // Python string literals use single quotes so this C# verbatim string only has to
             // double curly braces ({{ }}); path/marker/number values are interpolated.
@@ -56,6 +60,7 @@ import ifcopenshell.util.element as UE
 SRC = r'''{src}'''
 OUT = r'''{outDir}'''
 LIN = {lin}
+PSETS = {psets}
 
 def prog(frac, m):
     print('{StepConverter.ProgressMarker} %.4f %s' % (frac, m), flush=True)
@@ -124,6 +129,43 @@ def color_of(geo):
         return [r, g, b, a]
     except Exception:
         return None
+
+def collect_props(elem):
+    # Property sets + quantities, flattened to 'PsetName.PropName' -> string. get_psets
+    # already merges type-level psets into occurrences (BIM authoring convention).
+    try:
+        psets = UE.get_psets(elem)
+    except Exception:
+        return None
+    out = {{}}
+    for pname, props in (psets or {{}}).items():
+        if not isinstance(props, dict):
+            continue
+        for k, v in props.items():
+            if k == 'id' or v is None:
+                continue
+            if isinstance(v, (list, tuple)):
+                v = ', '.join(str(x) for x in v)
+            elif isinstance(v, float):
+                v = '%g' % v
+            elif isinstance(v, bool):
+                v = 'true' if v else 'false'
+            else:
+                v = str(v)
+            if v:
+                out['%s.%s' % (pname, k)] = v
+    return out or None
+
+def identify(node, elem):
+    # BIM identity: GlobalId always (it is what links a scene object back to the source
+    # model), full property sets only when requested.
+    guid = getattr(elem, 'GlobalId', None)
+    if guid:
+        node['guid'] = guid
+    if PSETS:
+        props = collect_props(elem)
+        if props:
+            node['props'] = props
 
 def material_hint(elem):
     # Lower-cased IFC material name(s) + category, so the importer can colour by material
@@ -202,6 +244,7 @@ def main():
         pos, quat = mat_to_pos_quat(local)
         name = getattr(elem, 'Name', None) or elem.is_a()
         node = {{'name': name, 'ifcType': elem.is_a(), 'pos': pos, 'quat': quat, 'mesh': -1, 'children': []}}
+        identify(node, elem)
         rec = tess.get(elem.id())
         if rec is not None:
             verts, faces, color = rec
@@ -243,6 +286,7 @@ def main():
             node = {{'name': (getattr(prod, 'Name', None) or ('Product_%d' % pid)),
                      'ifcType': prod.is_a(), 'pos': [0, 0, 0], 'quat': [0, 0, 0, 1],
                      'mesh': idx, 'children': []}}
+            identify(node, prod)
             if color is not None:
                 node['color'] = color
             roots.append(node)
