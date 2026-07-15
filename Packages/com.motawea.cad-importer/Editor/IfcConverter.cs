@@ -65,19 +65,23 @@ PSETS = {psets}
 def prog(frac, m):
     print('{StepConverter.ProgressMarker} %.4f %s' % (frac, m), flush=True)
 
+STL_REC = np.dtype([('n', '<f4', 3), ('a', '<f4', 3), ('b', '<f4', 3),
+                    ('c', '<f4', 3), ('attr', '<u2')])  # packed: 50 bytes/triangle
+
 def write_stl(path, verts, faces):
+    # verts: (n,3) float array, faces: (m,3) int array. Fully vectorised — the per-triangle
+    # struct.pack loop this replaces dominated conversion time on large models.
+    va, vb, vc = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
+    n = np.cross(vb - va, vc - va)
+    l = np.linalg.norm(n, axis=1)
+    l[l == 0] = 1.0
+    rec = np.zeros(len(faces), dtype=STL_REC)
+    rec['n'] = n / l[:, None]
+    rec['a'], rec['b'], rec['c'] = va, vb, vc
     with open(path, 'wb') as fp:
         fp.write(b'\0' * 80)
         fp.write(struct.pack('<I', len(faces)))
-        for a, b, c in faces:
-            va, vb, vc = verts[a], verts[b], verts[c]
-            ux, uy, uz = vb[0]-va[0], vb[1]-va[1], vb[2]-va[2]
-            wx, wy, wz = vc[0]-va[0], vc[1]-va[1], vc[2]-va[2]
-            nx, ny, nz = uy*wz-uz*wy, uz*wx-ux*wz, ux*wy-uy*wx
-            l = math.sqrt(nx*nx+ny*ny+nz*nz) or 1.0
-            fp.write(struct.pack('<12fH', nx/l, ny/l, nz/l,
-                                 va[0], va[1], va[2], vb[0], vb[1], vb[2],
-                                 vc[0], vc[1], vc[2], 0))
+        fp.write(rec.tobytes())
 
 def mat_to_pos_quat(M):
     # M: 4x4 rigid transform (metres) -> position + quaternion (x,y,z,w).
@@ -200,6 +204,9 @@ def main():
     except Exception:
         pass
 
+    # Each product's STL is written the moment it is tessellated, and only its file index and
+    # colour are kept — holding a whole building's triangle lists in Python memory made
+    # 100MB-class models swap and stall.
     tess = {{}}
     prog(0.05, 'tessellating geometry (this can take a while on large buildings)...')
     it = ifcopenshell.geom.iterator(settings, f, max(1, os.cpu_count() or 1))
@@ -208,10 +215,12 @@ def main():
         while True:
             shp = it.get()
             geo = shp.geometry
-            faces = np.array(geo.faces, dtype=int).reshape(-1, 3)
+            faces = np.array(geo.faces, dtype=np.int64).reshape(-1, 3)
             if len(faces):
-                verts = np.array(geo.verts, dtype=float).reshape(-1, 3)
-                tess[shp.id] = (verts.tolist(), faces.tolist(), color_of(geo))
+                verts = np.array(geo.verts, dtype=np.float64).reshape(-1, 3)
+                idx = len(tess)
+                write_stl(os.path.join(OUT, '%03d.stl' % idx), verts, faces)
+                tess[shp.id] = (idx, color_of(geo))
             n += 1
             if n % 25 == 0:
                 pct = it.progress()  # 0..100 across the whole model
@@ -247,9 +256,7 @@ def main():
         identify(node, elem)
         rec = tess.get(elem.id())
         if rec is not None:
-            verts, faces, color = rec
-            idx = counter[0]
-            write_stl(os.path.join(OUT, '%03d.stl' % idx), verts, faces)
+            idx, color = rec
             counter[0] += 1
             node['mesh'] = idx
             if color is not None:
@@ -278,9 +285,7 @@ def main():
         # No usable spatial tree: emit every geometric product at the origin.
         prog(0.9, 'no spatial tree; emitting products flat...')
         for pid, rec in tess.items():
-            verts, faces, color = rec
-            idx = counter[0]
-            write_stl(os.path.join(OUT, '%03d.stl' % idx), verts, faces)
+            idx, color = rec
             counter[0] += 1
             prod = f.by_id(pid)
             node = {{'name': (getattr(prod, 'Name', None) or ('Product_%d' % pid)),

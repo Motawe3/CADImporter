@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IfcPile`, `IfcEarthworksFill`, …) now get sensible default finishes (asphalt, steel,
   concrete, soil) instead of the generic grey.
 
+### Changed
+- **Lower memory and faster STL writing in the IFC converter.** Each element's STL is written
+  the moment it is tessellated instead of holding the entire building's triangle lists in
+  Python memory until placement (peak conversion memory on a 108 MB architecture model:
+  3.2 GB → 2.4 GB, scaling with geometry size), and the per-triangle `struct.pack` loop was
+  replaced with a vectorised numpy write. Output is byte-identical.
+
 ## [1.4.0] - 2026-07-09
 
 ### Added
