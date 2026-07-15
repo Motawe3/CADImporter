@@ -155,9 +155,12 @@ com.motawea.cad-importer/
   files from one project can be co-aligned. `IfcSpace` volumes import as translucent geometry
   (**Import Spaces**, on by default) or can be skipped entirely.
 - **IFC Debug window** (`Tools → CAD Importer IFC Debug`): recolour an imported model in the
-  scene by IFC type, storey, load-bearing or external/internal — with a colour-matched legend
-  showing per-category element and triangle statistics (click a row to select the elements).
-  Non-destructive: colours are transient overrides, nothing in the scene or assets changes.
+  scene by IFC type, storey, load-bearing or external/internal — solid or **X-ray**
+  (see-through, with a live transparency slider) — with a colour-matched legend showing
+  per-category element and triangle statistics. Per-category **visibility eyes** (Alt-click
+  to solo), search filter, click a row to select its elements, double-click to frame them.
+  Non-destructive: colours, ghosts and visibility are transient editor state; nothing in the
+  scene or assets changes.
 
 ## License
 

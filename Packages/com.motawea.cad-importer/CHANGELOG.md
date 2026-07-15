@@ -43,16 +43,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elements in the Hierarchy. Colouring uses transient `MaterialPropertyBlock` overrides —
   the scene, prefab and imported assets are never modified, and *Original* mode (or closing
   the window) restores everything.
+  - **X-Ray mode with a transparency slider** — see-through ghost materials in the category
+    colours, so occluded structure (columns behind walls, pipes in shafts) stays visible.
+    Ghost materials are temporary swaps with a guarded lifecycle: originals restore on mode
+    change, window close, scene save, play mode entry and domain reload, so they can never
+    leak into a saved scene. The slider updates transparency live.
+  - **Per-category visibility eyes** in the legend (Alt-click to solo a category), built on
+    the editor's scene-visibility system (the Hierarchy "eye"), plus a *Show All* button —
+    nothing is deactivated in the scene itself.
+  - QoL: legend search filter, double-click a row to frame its elements in the Scene view,
+    single-click to select, and the X-ray transparency persists between sessions.
 - **Import Spaces toggle.** `IfcSpace` volumes (rooms/zones) still import as translucent
   geometry by default, but can now be skipped entirely (**IFC → Import Spaces** off) — the
   default of most BIM viewers. Excluded spaces are never even tessellated.
 
 ### Changed
+- **The CAD Importer window now shows only the options the queued files actually use.** The
+  window used to render every setting for every import, so STEP tessellation and IFC/BIM
+  options were on screen while importing a single STL. Queue an STL and the STEP and IFC
+  sections are gone; queue an IFC and the STEP deflection options stay hidden, and the
+  FreeCAD converter section only appears when a STEP, IGES or IFC file is queued (naming just
+  the formats in play). With an empty queue the full set is shown, so FreeCAD and defaults can
+  still be configured ahead of time.
+- **Source Unit and Orientation no longer look editable when the format overrides them.**
+  glTF/GLB (metres, Y-up) and IFC (metres, Z-up) pin their own convention on import and always
+  silently ignored these two fields; with only such files queued they now render disabled with
+  an explanation instead.
+- **OBJ files no longer imply the import settings apply to them.** `.obj` goes to Unity's
+  native model importer, which reads none of these settings — the window now says so up front
+  rather than only logging it to the Console after the import.
+- **The Timeout setting moved out of the STEP group** into its own *FreeCAD Conversion
+  (STEP / IGES / IFC)* section — it always applied to IFC too. Existing values are preserved.
+
 - **Lower memory and faster STL writing in the IFC converter.** Each element's STL is written
   the moment it is tessellated instead of holding the entire building's triangle lists in
   Python memory until placement (peak conversion memory on a 108 MB architecture model:
   3.2 GB → 2.4 GB, scaling with geometry size), and the per-triangle `struct.pack` loop was
   replaced with a vectorised numpy write. Output is byte-identical.
+
+### Fixed
+- **`.ifczip` was missing from the CAD Importer window's *Add Files…* picker.** Compressed IFC
+  archives could be dragged onto the window but not selected through the file dialog. The
+  window's accepted extensions now come from a single table shared by the drop target, the
+  file picker and the settings gating, so the two can no longer drift apart.
 
 ## [1.4.0] - 2026-07-09
 
