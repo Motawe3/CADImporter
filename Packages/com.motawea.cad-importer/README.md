@@ -29,7 +29,7 @@ Or add it to `Packages/manifest.json` directly:
 | OBJ | Unity native importer | ✔ | Runtime path supports groups, materials, negative indices |
 | glTF 2.0 / GLB | ✔ drag & drop | ✔ | Node hierarchy **with pivots preserved** (robot rigs / joints), metallic-roughness PBR + textures, embedded/external/base64 buffers. No Draco/meshopt/KTX2 |
 | STEP / IGES | ✔ via FreeCAD | – | Assembly **hierarchy with pivots preserved** (sub-assemblies / joints), parts and labels; requires [FreeCAD](https://www.freecad.org) |
-| IFC (BIM) | ✔ via FreeCAD | – | Spatial **hierarchy with pivots preserved** (site / building / storey / element), authored surface colours or a professional **colour-by-category** palette, deduplicated into shared materials; requires [FreeCAD](https://www.freecad.org) (bundles IfcOpenShell) |
+| IFC / IFCZIP (BIM) | ✔ via FreeCAD | – | Spatial **hierarchy with pivots preserved** (site / building / storey / element), **BIM data on every element** (`IfcElement` component: IFC type, GlobalId, property sets), authored surface colours or a professional **colour-by-category** palette (incl. IFC4.3 infrastructure), georeferenced models moved to the origin with the offset recorded, optional space import; requires [FreeCAD](https://www.freecad.org) (bundles IfcOpenShell) |
 
 ## Quick start
 
@@ -146,6 +146,14 @@ com.motawea.cad-importer/
   are applied to their host geometry. Detail is set by **IFC Linear Deflection** (metres); on
   very large models, preserving one GameObject per element trades draw calls for a navigable
   tree — enable **Mark Static** (on by default for IFC) so Unity can batch them.
+- Every imported IFC element carries an `IfcElement` component with its IFC type, stable
+  **GlobalId** and (with **Import Properties** on, the default) its flattened property sets —
+  `GetProperty("Pset_WallCommon.FireRating")` — for digital-twin and BIM tooling. The detected
+  schema (IFC2X3/IFC4/IFC4X3) is recorded on `CADModelInfo.sourceFormat`. Georeferenced models
+  (site at real map coordinates) are moved to the origin; the subtracted offset and the source
+  CRS/latitude-longitude are kept on `CADModelInfo.geoOffset` / `.geoReference`, so several
+  files from one project can be co-aligned. `IfcSpace` volumes import as translucent geometry
+  (**Import Spaces**, on by default) or can be skipped entirely.
 
 ## License
 
