@@ -19,14 +19,15 @@ namespace CADImporter.Editor
         /// <paramref name="linearDeflectionMeters"/> is the tessellation chord tolerance.
         /// </summary>
         public static bool ConvertToStl(string converterExe, string sourceFile, string outputDir,
-            float linearDeflectionMeters, bool importProperties, int timeoutSeconds, string label,
-            out string error)
+            float linearDeflectionMeters, bool importProperties, bool importSpaces,
+            int timeoutSeconds, string label, out string error)
         {
             error = null;
             Directory.CreateDirectory(outputDir);
             string scriptPath = Path.Combine(outputDir, "_ifc.py");
             File.WriteAllText(scriptPath,
-                BuildScript(sourceFile, outputDir, linearDeflectionMeters, importProperties));
+                BuildScript(sourceFile, outputDir, linearDeflectionMeters, importProperties,
+                    importSpaces));
 
             if (!StepConverter.RunFreeCadScript(converterExe, scriptPath, timeoutSeconds, label, out _, out error))
                 return false;
@@ -40,11 +41,12 @@ namespace CADImporter.Editor
         }
 
         static string BuildScript(string src, string outDir, float linearDeflectionMeters,
-            bool importProperties)
+            bool importProperties, bool importSpaces)
         {
             var inv = CultureInfo.InvariantCulture;
             string lin = Math.Max(linearDeflectionMeters, 0.0001f).ToString(inv);
             string psets = importProperties ? "1" : "0";
+            string spaces = importSpaces ? "1" : "0";
 
             // Python string literals use single quotes so this C# verbatim string only has to
             // double curly braces ({{ }}); path/marker/number values are interpolated.
@@ -61,6 +63,7 @@ SRC = r'''{src}'''
 OUT = r'''{outDir}'''
 LIN = {lin}
 PSETS = {psets}
+SPACES = {spaces}
 
 def prog(frac, m):
     print('{StepConverter.ProgressMarker} %.4f %s' % (frac, m), flush=True)
@@ -260,7 +263,15 @@ def main():
     # 100MB-class models swap and stall.
     tess = {{}}
     prog(0.05, 'tessellating geometry (this can take a while on large buildings)...')
-    it = ifcopenshell.geom.iterator(settings, f, max(1, os.cpu_count() or 1))
+    kw = {{}}
+    if not SPACES:
+        # Skip room/zone volumes entirely (the default of most BIM viewers). Excluding them
+        # from the iterator avoids even tessellating them; the empty spatial nodes are then
+        # pruned from the tree.
+        spaces = f.by_type('IfcSpace')
+        if spaces:
+            kw['exclude'] = spaces
+    it = ifcopenshell.geom.iterator(settings, f, max(1, os.cpu_count() or 1), **kw)
     if it.initialize():
         n = 0
         while True:

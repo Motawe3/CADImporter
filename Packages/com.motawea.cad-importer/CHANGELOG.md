@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   georeference (projected CRS + map coordinates from `IfcMapConversion`, site
   latitude/longitude/elevation) is preserved on `CADModelInfo.geoReference`.
 
+- **Import Spaces toggle.** `IfcSpace` volumes (rooms/zones) still import as translucent
+  geometry by default, but can now be skipped entirely (**IFC → Import Spaces** off) — the
+  default of most BIM viewers. Excluded spaces are never even tessellated.
+
 ### Changed
 - **Lower memory and faster STL writing in the IFC converter.** Each element's STL is written
   the moment it is tessellated instead of holding the entire building's triangle lists in

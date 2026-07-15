@@ -97,6 +97,9 @@ namespace CADImporter.Editor
                  "and GlobalId are always kept; this adds the full property data, which grows " +
                  "import time and asset size on very large models.")]
         public bool ifcImportProperties = true;
+        [Tooltip("Import IfcSpace volumes (rooms/zones) as translucent geometry. Useful for " +
+                 "space-analysis workflows; turn off to skip them entirely, as most viewers do.")]
+        public bool ifcImportSpaces = true;
 
         public CADProcessOptions ToProcessOptions() => new CADProcessOptions
         {

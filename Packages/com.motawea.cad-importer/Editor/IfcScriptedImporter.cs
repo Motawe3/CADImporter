@@ -16,7 +16,7 @@ namespace CADImporter.Editor
     // .ifcxml is deliberately NOT registered: the IfcOpenShell build FreeCAD currently bundles
     // (0.8.x) stubs out its ifcXML parser ("IFC-XML import temporarily disabled"), so claiming
     // the extension would only manufacture guaranteed import errors.
-    [ScriptedImporter(4, new[] { "ifc", "ifczip" })]
+    [ScriptedImporter(5, new[] { "ifc", "ifczip" })]
     public class IfcScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = CreateDefaults();
@@ -55,8 +55,8 @@ namespace CADImporter.Editor
             {
                 string src = Path.GetFullPath(ctx.assetPath);
                 if (!IfcConverter.ConvertToStl(converter, src, tempDir,
-                        s.ifcLinearDeflection, s.ifcImportProperties, s.stepTimeoutSeconds,
-                        Path.GetFileName(ctx.assetPath), out string error))
+                        s.ifcLinearDeflection, s.ifcImportProperties, s.ifcImportSpaces,
+                        s.stepTimeoutSeconds, Path.GetFileName(ctx.assetPath), out string error))
                 {
                     ctx.LogImportError($"CAD Importer: IFC conversion of '{ctx.assetPath}' failed. {error}");
                     CADAssetBuilder.BuildPlaceholder(ctx, name);
