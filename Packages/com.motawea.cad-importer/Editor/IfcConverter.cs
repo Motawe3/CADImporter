@@ -291,7 +291,8 @@ def main():
                 node['color'] = color
             roots.append(node)
 
-    manifest = {{'unit': 'm', 'worldBBox': None, 'nodes': roots}}
+    schema = str(getattr(f, 'schema_identifier', None) or f.schema)
+    manifest = {{'unit': 'm', 'schema': schema, 'worldBBox': None, 'nodes': roots}}
     with open(os.path.join(OUT, 'manifest.json'), 'w') as mf:
         json.dump(manifest, mf)
     prog(1.0, 'done: %d mesh part(s)' % counter[0])

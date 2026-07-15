@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flattened as `Pset_WallCommon.FireRating` → value pairs and queryable via
   `IfcElement.GetProperty`. Type-level psets are merged into occurrences per BIM convention.
   Disable **IFC → Import Properties** to keep only type + GlobalId on very large models.
+- **IFCZIP import (.ifczip)** — compressed IFC archives import exactly like plain `.ifc` files.
+  (ifcXML was evaluated too, but the IfcOpenShell build FreeCAD currently bundles disables its
+  ifcXML parser, so the extension is not claimed.)
+- **IFC schema version surfaced.** The detected schema (IFC2X3 / IFC4 / IFC4X3…) is logged on
+  import and recorded in the root `CADModelInfo.sourceFormat` (e.g. "IFC (IFC4)") — files of
+  different vintages tessellate and colour differently, so the version is worth seeing.
+- **IFC4.3 infrastructure palette.** Roads, rail, bridge and geotechnical element types
+  (`IfcPavement`, `IfcKerb`, `IfcRail`, `IfcTrackElement`, `IfcSignal`, `IfcBearing`,
+  `IfcPile`, `IfcEarthworksFill`, …) now get sensible default finishes (asphalt, steel,
+  concrete, soil) instead of the generic grey.
 
 ## [1.4.0] - 2026-07-09
 

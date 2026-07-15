@@ -54,6 +54,8 @@ namespace CADImporter
         static readonly IfcFinish SpaceF       = F(150, 180, 205, 0f, 0.20f, 0.10f);
         static readonly IfcFinish PipeF        = F( 79, 163, 158, 0.30f, 0.50f);     // teal
         static readonly IfcFinish DuctF        = F(211, 177,  92, 0.20f, 0.40f);     // tan
+        static readonly IfcFinish AsphaltF     = F( 88,  88,  92, 0f, 0.05f);        // road surface
+        static readonly IfcFinish EarthF       = F(150, 124,  95, 0f, 0.05f);        // soil / fill
 
         /// <summary>Neutral warm grey for proxies / unknown categories.</summary>
         public static readonly IfcFinish Default = F(195, 191, 183, 0f, 0.15f);
@@ -71,6 +73,16 @@ namespace CADImporter
             { "IfcStair", CirculationF }, { "IfcStairFlight", CirculationF },
             { "IfcRamp", CirculationF }, { "IfcRampFlight", CirculationF },
             { "IfcFurnishingElement", FurnitureF }, { "IfcFurniture", FurnitureF },
+
+            // IFC4.3 infrastructure (roads, rail, bridges) — geometric element types only;
+            // spatial facilities (IfcRoad, IfcBridge, IfcRailway) carry no geometry themselves.
+            { "IfcPavement", AsphaltF }, { "IfcCourse", AsphaltF }, { "IfcKerb", ConcreteF },
+            { "IfcRail", SteelF }, { "IfcTrackElement", DarkMetalF },
+            { "IfcSignal", DarkMetalF }, { "IfcSign", DarkMetalF }, { "IfcBearing", DarkMetalF },
+            { "IfcPile", ConcreteF }, { "IfcCaissonFoundation", ConcreteF },
+            { "IfcFooting", ConcreteF },
+            { "IfcEarthworksFill", EarthF }, { "IfcEarthworksCut", EarthF },
+            { "IfcReinforcedSoil", EarthF }, { "IfcGeotechnicalStratum", EarthF },
         };
 
         /// <summary>

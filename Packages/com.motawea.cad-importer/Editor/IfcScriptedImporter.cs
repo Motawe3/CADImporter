@@ -13,7 +13,10 @@ namespace CADImporter.Editor
     /// becomes a child GameObject with its own local pivot, and every element keeps its IFC surface
     /// colour, so a building imports as a navigable, coloured hierarchy ready for realtime rendering.
     /// </summary>
-    [ScriptedImporter(2, new[] { "ifc" })]
+    // .ifcxml is deliberately NOT registered: the IfcOpenShell build FreeCAD currently bundles
+    // (0.8.x) stubs out its ifcXML parser ("IFC-XML import temporarily disabled"), so claiming
+    // the extension would only manufacture guaranteed import errors.
+    [ScriptedImporter(3, new[] { "ifc", "ifczip" })]
     public class IfcScriptedImporter : ScriptedImporter
     {
         public CADImportSettings settings = CreateDefaults();
@@ -67,6 +70,17 @@ namespace CADImporter.Editor
 
                 string manifestPath = Path.Combine(tempDir, "manifest.json");
                 var root = JNode.Parse(File.ReadAllText(manifestPath));
+
+                // Surface the schema (IFC2X3 / IFC4 / IFC4X3...) — files of different vintages
+                // tessellate and colour differently, so make the version easy to see when
+                // comparing imports.
+                string schema = root["schema"].AsString(null);
+                if (!string.IsNullOrEmpty(schema))
+                {
+                    model.Format = $"IFC ({schema})";
+                    Debug.Log($"CAD Importer: '{Path.GetFileName(ctx.assetPath)}' schema {schema}.");
+                }
+
                 foreach (var mn in root["nodes"].Items)
                 {
                     var node = BuildIfcNode(mn, tempDir, parts, s.sourceOrientation, model, palette);
