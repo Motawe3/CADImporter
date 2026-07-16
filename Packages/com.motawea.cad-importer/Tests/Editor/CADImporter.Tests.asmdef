@@ -3,6 +3,7 @@
     "rootNamespace": "CADImporter.Tests",
     "references": [
         "CADImporter.Runtime",
+        "CADImporter.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

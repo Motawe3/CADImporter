@@ -39,13 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inspection of any imported model in the scene, driven by the `IfcElement` data. Recolour the
   model **by IFC type**, **by storey**, **by load-bearing** or **by external/internal** (the
   latter two read the imported property sets), with a colour-matched legend showing element
-  count, LOD0 triangle count and share per category; clicking a legend row selects those
+  count, LOD0 triangle count (summed over every submesh, so multi-material parts are counted
+  in full) and share per category; clicking a legend row selects those
   elements in the Hierarchy. Colouring uses transient `MaterialPropertyBlock` overrides —
   the scene, prefab and imported assets are never modified, and *Original* mode (or closing
   the window) restores everything.
   - **Per-category visibility eyes** in the legend (Alt-click to solo a category), built on
     the editor's scene-visibility system (the Hierarchy "eye"), plus a *Show All* button —
     nothing is deactivated in the scene itself.
+  - **Hiding is cumulative across draw modes.** Hidden categories are kept as rules (a set of
+    hidden labels per mode) rather than read back out of the scene, so an element is hidden
+    when any mode's category hides it. Hide a storey, switch to *By Type* and toggle doors,
+    and the hidden storey's doors stay hidden instead of reappearing on their own; *Show All*
+    counts every hidden element regardless of the mode on screen; a dimmed eye plus an
+    `n/total hidden` count marks a category another mode partly hides. Rules are labels, so
+    they also survive a rescan when the scene is edited.
   - QoL: legend search filter, double-click a row to frame its elements in the Scene view,
     single-click to select.
 - **Import Spaces toggle.** `IfcSpace` volumes (rooms/zones) still import as translucent

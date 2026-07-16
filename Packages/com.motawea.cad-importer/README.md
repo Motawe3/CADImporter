@@ -92,6 +92,12 @@ and breaks it down statistically, using the `IfcElement` components the importer
    - **Eye icon** hides/shows a category in the Scene view (**Alt-click to solo** it);
      **Show All** brings everything back. Hiding a few large categories is the quickest way
      to look inside a building.
+   - **Hiding is cumulative across draw modes.** Hide a storey, switch to *By Type* and hide
+     doors, and both rules apply — an element is hidden when any category hides it. Un-hiding
+     doors leaves the hidden storey's doors hidden, because the storey still hides them. A
+     **dimmed eye** marks a category another mode partly hides, with an `n/total hidden`
+     count; **Show All** counts every hidden element whatever mode you are in, and *Original*
+     clears the colours and every hide rule at once.
    - **Click** a row to select its elements in the Hierarchy; **double-click** to frame them
      in the Scene view.
    - The **search field** filters the legend on models with many categories.
