@@ -5,8 +5,8 @@ using UnityEngine;
 
 namespace CADImporter.Editor
 {
-    /// <summary>How the IFC debug view colours the model.</summary>
-    public enum IfcDebugMode
+    /// <summary>How the IFC inspector colours the model.</summary>
+    public enum IfcInspectorMode
     {
         /// <summary>Imported materials (clears every override).</summary>
         Original,
@@ -21,7 +21,7 @@ namespace CADImporter.Editor
     }
 
     /// <summary>One legend row: a colour, its label and the elements/geometry it covers.</summary>
-    public sealed class IfcDebugGroup
+    public sealed class IfcInspectorGroup
     {
         public string Label;
         public Color Color;
@@ -31,7 +31,7 @@ namespace CADImporter.Editor
     }
 
     /// <summary>
-    /// Non-destructive debug colouring of an imported IFC model, driven by the
+    /// Non-destructive inspection colouring of an imported IFC model, driven by the
     /// <see cref="IfcElement"/> data the importer attaches. Colouring uses
     /// <see cref="MaterialPropertyBlock"/>s, which are never serialized — the scene, prefab
     /// and imported assets stay untouched, and everything reverts on scene reload or
@@ -39,15 +39,15 @@ namespace CADImporter.Editor
     /// (the Hierarchy "eye"), which is editor-session state only. Separated from the window
     /// so it is testable headlessly.
     /// </summary>
-    public static class IfcDebugPainter
+    public static class IfcInspectorPainter
     {
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP Lit
         static readonly int ColorId = Shader.PropertyToID("_Color");         // Standard
 
         /// <summary>Classifies every IfcElement under <paramref name="root"/> for a mode.</summary>
-        public static List<IfcDebugGroup> CollectGroups(GameObject root, IfcDebugMode mode)
+        public static List<IfcInspectorGroup> CollectGroups(GameObject root, IfcInspectorMode mode)
         {
-            var byLabel = new Dictionary<string, IfcDebugGroup>();
+            var byLabel = new Dictionary<string, IfcInspectorGroup>();
             foreach (var elem in root.GetComponentsInChildren<IfcElement>(true))
             {
                 var renderers = OwnedRenderers(elem);
@@ -55,7 +55,7 @@ namespace CADImporter.Editor
 
                 string label = Classify(elem, mode);
                 if (!byLabel.TryGetValue(label, out var group))
-                    byLabel[label] = group = new IfcDebugGroup { Label = label };
+                    byLabel[label] = group = new IfcInspectorGroup { Label = label };
 
                 group.Elements.Add(elem.gameObject);
                 group.Renderers.AddRange(renderers);
@@ -70,7 +70,7 @@ namespace CADImporter.Editor
         }
 
         /// <summary>Applies each group's colour to all its renderers (every LOD level).</summary>
-        public static void Apply(List<IfcDebugGroup> groups)
+        public static void Apply(List<IfcInspectorGroup> groups)
         {
             var mpb = new MaterialPropertyBlock();
             foreach (var g in groups)
@@ -94,7 +94,7 @@ namespace CADImporter.Editor
         }
 
         /// <summary>Shows or hides one category via the Hierarchy's scene-visibility "eye".</summary>
-        public static void SetGroupVisible(IfcDebugGroup group, bool visible)
+        public static void SetGroupVisible(IfcInspectorGroup group, bool visible)
         {
             var svm = SceneVisibilityManager.instance;
             foreach (var go in group.Elements)
@@ -105,7 +105,7 @@ namespace CADImporter.Editor
             }
         }
 
-        public static bool IsGroupHidden(IfcDebugGroup group)
+        public static bool IsGroupHidden(IfcInspectorGroup group)
         {
             var svm = SceneVisibilityManager.instance;
             foreach (var go in group.Elements)
@@ -113,14 +113,14 @@ namespace CADImporter.Editor
             return false;
         }
 
-        static string Classify(IfcElement elem, IfcDebugMode mode)
+        static string Classify(IfcElement elem, IfcInspectorMode mode)
         {
             switch (mode)
             {
-                case IfcDebugMode.ByType:
+                case IfcInspectorMode.ByType:
                     return string.IsNullOrEmpty(elem.ifcType) ? "(unknown)" : elem.ifcType;
 
-                case IfcDebugMode.ByStorey:
+                case IfcInspectorMode.ByStorey:
                 {
                     for (var t = elem.transform.parent; t != null; t = t.parent)
                     {
@@ -131,7 +131,7 @@ namespace CADImporter.Editor
                     return "(no storey)";
                 }
 
-                case IfcDebugMode.ByLoadBearing:
+                case IfcInspectorMode.ByLoadBearing:
                     switch (PropBySuffix(elem, ".LoadBearing"))
                     {
                         case "true": return "Load-bearing";
@@ -139,7 +139,7 @@ namespace CADImporter.Editor
                         default: return "Not specified";
                     }
 
-                case IfcDebugMode.ByExternal:
+                case IfcInspectorMode.ByExternal:
                     switch (PropBySuffix(elem, ".IsExternal"))
                     {
                         case "true": return "External";
@@ -206,11 +206,11 @@ namespace CADImporter.Editor
             return tris;
         }
 
-        static void AssignColors(List<IfcDebugGroup> groups, IfcDebugMode mode)
+        static void AssignColors(List<IfcInspectorGroup> groups, IfcInspectorMode mode)
         {
             // Semantic modes use fixed, meaningful colours; categorical modes get maximally
             // distinct hues via the golden ratio, in the (stable) group order.
-            if (mode == IfcDebugMode.ByLoadBearing || mode == IfcDebugMode.ByExternal)
+            if (mode == IfcInspectorMode.ByLoadBearing || mode == IfcInspectorMode.ByExternal)
             {
                 foreach (var g in groups)
                 {
@@ -233,32 +233,32 @@ namespace CADImporter.Editor
     }
 
     /// <summary>
-    /// Visual + statistical BIM debugging for imported IFC models: recolour a model in the
+    /// Visual + statistical BIM inspection for imported IFC models: recolour a model in the
     /// scene by IFC type, storey or pset flags, with a colour-matched legend showing element
     /// and triangle statistics per category. Legend rows have visibility eyes (Alt-click to
     /// solo), click to select, double-click to frame. All colouring is a transient
     /// MaterialPropertyBlock override — nothing in the scene or assets is modified.
     /// </summary>
-    public class IfcDebugWindow : EditorWindow
+    public class IfcInspectorWindow : EditorWindow
     {
         CADModelInfo target;
-        IfcDebugMode mode = IfcDebugMode.Original;
-        List<IfcDebugGroup> groups;
+        IfcInspectorMode mode = IfcInspectorMode.Original;
+        List<IfcInspectorGroup> groups;
         Vector2 scroll;
         string search = "";
         double lastRowClick;
         string lastRowLabel;
 
-        [MenuItem("Tools/CAD Importer IFC Debug")]
+        [MenuItem("Tools/CAD Importer IFC Inspector")]
         public static void Open()
         {
-            var window = GetWindow<IfcDebugWindow>("IFC Debug");
+            var window = GetWindow<IfcInspectorWindow>("IFC Inspector");
             window.minSize = new Vector2(380, 360);
         }
 
         void OnDisable()
         {
-            if (target != null) IfcDebugPainter.Clear(target.gameObject);
+            if (target != null) IfcInspectorPainter.Clear(target.gameObject);
         }
 
         void OnGUI()
@@ -274,14 +274,14 @@ namespace CADImporter.Editor
             }
 
             EditorGUILayout.Space(4);
-            var newMode = (IfcDebugMode)EditorGUILayout.EnumPopup("Draw mode", mode);
+            var newMode = (IfcInspectorMode)EditorGUILayout.EnumPopup("Draw mode", mode);
             if (newMode != mode)
             {
                 mode = newMode;
                 ApplyMode();
             }
 
-            if (mode != IfcDebugMode.Original && groups != null)
+            if (mode != IfcInspectorMode.Original && groups != null)
                 DrawLegend();
         }
 
@@ -317,7 +317,7 @@ namespace CADImporter.Editor
         void SetTarget(CADModelInfo next)
         {
             if (target != null && target != next)
-                IfcDebugPainter.Clear(target.gameObject);
+                IfcInspectorPainter.Clear(target.gameObject);
             target = next;
             ApplyMode();
         }
@@ -328,7 +328,7 @@ namespace CADImporter.Editor
             foreach (var r in target.GetComponentsInChildren<Renderer>(true))
                 r.SetPropertyBlock(null);
 
-            if (mode == IfcDebugMode.Original)
+            if (mode == IfcInspectorMode.Original)
             {
                 groups = null;
                 SceneVisibilityManager.instance.Show(target.gameObject, true);
@@ -336,8 +336,8 @@ namespace CADImporter.Editor
                 return;
             }
 
-            groups = IfcDebugPainter.CollectGroups(target.gameObject, mode);
-            IfcDebugPainter.Apply(groups);
+            groups = IfcInspectorPainter.CollectGroups(target.gameObject, mode);
+            IfcInspectorPainter.Apply(groups);
             SceneView.RepaintAll();
         }
 
@@ -347,7 +347,7 @@ namespace CADImporter.Editor
 
             long totalTris = groups.Sum(g => (long)g.Triangles);
             int totalElems = groups.Sum(g => g.Elements.Count);
-            int hidden = groups.Count(IfcDebugPainter.IsGroupHidden);
+            int hidden = groups.Count(IfcInspectorPainter.IsGroupHidden);
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -380,10 +380,10 @@ namespace CADImporter.Editor
                 MessageType.None);
         }
 
-        void DrawRow(IfcDebugGroup g, long totalTris)
+        void DrawRow(IfcInspectorGroup g, long totalTris)
         {
             var row = EditorGUILayout.GetControlRect(false, 20);
-            bool isHidden = IfcDebugPainter.IsGroupHidden(g);
+            bool isHidden = IfcInspectorPainter.IsGroupHidden(g);
 
             // Visibility eye, matching the Hierarchy's icons. Alt-click isolates the category.
             var eyeRect = new Rect(row.x, row.y + 1, 22, 18);
@@ -394,11 +394,11 @@ namespace CADImporter.Editor
                 if (Event.current.alt)
                 {
                     foreach (var other in groups)
-                        IfcDebugPainter.SetGroupVisible(other, other == g);
+                        IfcInspectorPainter.SetGroupVisible(other, other == g);
                 }
                 else
                 {
-                    IfcDebugPainter.SetGroupVisible(g, isHidden);
+                    IfcInspectorPainter.SetGroupVisible(g, isHidden);
                 }
                 SceneView.RepaintAll();
             }

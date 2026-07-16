@@ -64,19 +64,19 @@ GameObject robot = await CADRuntimeImporter.ImportAsync(
     });
 ```
 
-## IFC Debug window — visual & statistical BIM inspection
+## IFC Inspector window — visual & statistical BIM inspection
 
-`Tools → CAD Importer IFC Debug` recolours an imported model in the scene by its BIM data
+`Tools → CAD Importer IFC Inspector` recolours an imported model in the scene by its BIM data
 and breaks it down statistically, using the `IfcElement` components the importer attaches
 (IFC type, GlobalId, property sets).
 
-<img src="Documentation~/images/ifc-debug-window.jpg" width="480" alt="IFC Debug window — Schependomlaan coloured by IFC type">
+<img src="Documentation~/images/ifc-inspector-window.jpg" width="480" alt="IFC Inspector window — Schependomlaan coloured by IFC type">
 
 **Using it:**
 
 1. Import an IFC and put an instance in the open scene (the batch window's *Add imported
    model(s) to the open scene* does this for you).
-2. Open `Tools → CAD Importer IFC Debug`. With one model in the scene it is picked
+2. Open `Tools → CAD Importer IFC Inspector`. With one model in the scene it is picked
    automatically; otherwise choose it from the **Model** dropdown or select any part of it
    in the Hierarchy and press **From Selection**.
 3. Pick a **Draw mode**:
@@ -156,7 +156,7 @@ com.motawea.cad-importer/
 │   ├── CADAssetBuilder.cs   prefab/LOD/collider/material assembly
 │   ├── StepConverter.cs     FreeCAD bridge (+ IfcConverter.cs for IFC)
 │   ├── CADImporterWindow.cs Tools → CAD Importer
-│   └── IfcDebugView.cs      Tools → CAD Importer IFC Debug (BIM visualizer)
+│   └── IfcInspectorView.cs  Tools → CAD Importer IFC Inspector (BIM visualizer)
 ├── Tests/Editor/       EditMode test suite (add "com.motawea.cad-importer" to
 │                       "testables" in your manifest to run them)
 ├── Samples~/           "CAD Importer Demo" — runtime import scene (import via
@@ -198,7 +198,7 @@ com.motawea.cad-importer/
   files from one project can be co-aligned. `IfcSpace` volumes import as translucent geometry
   (**Import Spaces**, on by default) or can be skipped entirely.
 - BIM models can be inspected visually and statistically with the
-  [IFC Debug window](#ifc-debug-window--visual--statistical-bim-inspection).
+  [IFC Inspector window](#ifc-inspector-window--visual--statistical-bim-inspection).
 
 ## License
 

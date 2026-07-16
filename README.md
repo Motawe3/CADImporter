@@ -55,13 +55,13 @@ STEP/IGES/IFC import additionally needs a local [FreeCAD](https://www.freecad.or
   type, GlobalId, property sets), the schema version is recorded, **georeferenced models
   import at the origin** with the map offset preserved for multi-file alignment, and
   `IfcSpace` volumes are optional.
-- **IFC Debug window** (`Tools → CAD Importer IFC Debug`) — recolour a model by IFC type,
+- **IFC Inspector window** (`Tools → CAD Importer IFC Inspector`) — recolour a model by IFC type,
   storey, load-bearing or external/internal, with a colour-matched legend of per-category
   element/triangle statistics, visibility eyes (Alt-click to solo), search, and
   click-to-select. Transient editor overrides only — nothing in the scene or assets changes.
-  See the [quick guide](Packages/com.motawea.cad-importer/README.md#ifc-debug-window--visual--statistical-bim-inspection).
+  See the [quick guide](Packages/com.motawea.cad-importer/README.md#ifc-inspector-window--visual--statistical-bim-inspection).
 
-  <img src="Packages/com.motawea.cad-importer/Documentation~/images/ifc-debug-window.jpg" width="440" alt="IFC Debug window — model coloured by IFC type">
+  <img src="Packages/com.motawea.cad-importer/Documentation~/images/ifc-inspector-window.jpg" width="440" alt="IFC Inspector window — model coloured by IFC type">
 
 - **Runtime import for digital twins**:
 
